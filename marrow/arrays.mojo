@@ -5,7 +5,7 @@ from sys import size_of
 
 
 @fieldwise_init
-struct Array(Copyable, ImplicitlyCopyable, Movable, Representable, Stringable, Writable):
+struct Array(Copyable, Movable):
     """Array is the lower level abstraction directly usable by the library consumer.
 
     Equivalent with https://github.com/apache/arrow/blob/7184439dea96cd285e6de00e07c5114e4919a465/cpp/src/arrow/array/data.h#L62-L84.
@@ -37,19 +37,19 @@ struct Array(Copyable, ImplicitlyCopyable, Movable, Representable, Stringable, W
 
     @implicit
     fn __init__[T: DataType](out self, var value: PrimitiveArray[T]):
-        self = value.data^
+        self = value.data.copy()
 
     @implicit
     fn __init__(out self, var value: StringArray):
-        self = value.data^
+        self = value.data.copy()
 
     @implicit
     fn __init__(out self, var value: ListArray):
-        self = value.data^
+        self = value.data.copy()
 
     @implicit
     fn __init__(out self, var value: StructArray):
-        self = value.data^
+        self = value.data.copy()
 
     fn __init__(out self, *, copy: Self):
         self.dtype = copy.dtype.copy()
@@ -108,60 +108,6 @@ struct Array(Copyable, ImplicitlyCopyable, Movable, Representable, Stringable, W
 
     fn as_list(var self) raises -> ListArray:
         return ListArray(self^)
-
-    fn _dynamic_write[W: Writer](self, index: Int, mut writer: W):
-        """Write to the given stream dispatching on the dtype."""
-
-        @parameter
-        for known_type in [
-            DType.bool,
-            DType.int16,
-            DType.int32,
-            DType.int64,
-            DType.int8,
-            DType.float32,
-            DType.float64,
-            DType.uint16,
-            DType.uint32,
-            DType.uint64,
-            DType.uint8,
-        ]:
-            if self.dtype.native == known_type:
-                writer.write(self.buffers[0][].unsafe_get[known_type](index))
-                return
-        if self.dtype.is_string():
-            # Should print a StringArray through the element specific write_to.
-            writer.write("<str>")
-            return
-        writer.write("dtype=")
-        writer.write(self.dtype)
-
-    fn write_to[W: Writer](self, mut writer: W):
-        """
-        Formats this Array to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
-
-        Args:
-            writer: The object to write to.
-        """
-
-        for i in range(self.length):
-            if self.is_valid(i):
-                var real_index = i + self.offset
-                self._dynamic_write(real_index, writer)
-            else:
-                writer.write("-")
-            writer.write(" ")
-            if i > 10:
-                break
-
-    fn __str__(self) -> String:
-        return String.write(self)
-
-    fn __repr__(self) -> String:
-        return String.write(self)
 
     fn append_to_array(
         deinit self: Array, mut combined: Array, start: Int
@@ -238,7 +184,7 @@ fn drop_nulls[
         start = new_values_end
 
 
-struct PrimitiveArray[T: DataType](Movable, Representable, Sized, Stringable, Writable):
+struct PrimitiveArray[T: DataType](Movable, Sized):
     """An Arrow array of primitive types."""
 
     comptime dtype = Self.T
@@ -359,43 +305,6 @@ struct PrimitiveArray[T: DataType](Movable, Representable, Sized, Stringable, Wr
         var valid_count = self.bitmap()[].buffer.bit_count()
         return self.data.length - valid_count
 
-    fn write_to[W: Writer](self, mut writer: W):
-        """
-        Formats this PrimitiveArray to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
-
-        Args:
-            writer: The object to write to.
-        """
-
-        writer.write("PrimitiveArray( dtype=")
-        writer.write(materialize[Self.dtype]())
-        writer.write(", offset=")
-        writer.write(self.offset)
-        writer.write(", capacity=")
-        writer.write(self.capacity)
-        writer.write(", buffer=[")
-        for i in range(self.capacity):
-            if self.is_valid(i):
-                writer.write(
-                    self.buffer()[].unsafe_get[Self.T.native](i + self.offset)
-                )
-            else:
-                writer.write("NULL")
-            writer.write(", ")
-            if i > 10:
-                writer.write("...")
-                break
-        writer.write("])")
-
-    fn __str__(self) -> String:
-        return String.write(self)
-
-    fn __repr__(self) -> String:
-        return String.write(self)
-
 
 comptime BoolArray = PrimitiveArray[bool_]
 comptime Int8Array = PrimitiveArray[int8]
@@ -410,7 +319,7 @@ comptime Float32Array = PrimitiveArray[float32]
 comptime Float64Array = PrimitiveArray[float64]
 
 
-struct StringArray(Movable, Representable, Sized, Stringable, Writable):
+struct StringArray(Movable, Sized):
     var data: Array
     var capacity: Int
 
@@ -510,36 +419,8 @@ struct StringArray(Movable, Representable, Sized, Stringable, Writable):
         var src_address = value.unsafe_ptr()
         memcpy(dest=dst_address, src=src_address, count=length)
 
-    fn write_to[W: Writer](self, mut writer: W):
-        """
-        Formats this StringArray to the provided Writer.
 
-        Parameters:
-            W: A type conforming to the Writable trait.
-
-        Args:
-            writer: The object to write to.
-        """
-
-        writer.write("StringArray( length=")
-        writer.write(self.data.length)
-        writer.write(", data= [")
-        for i in range(self.data.length):
-            writer.write('"')
-            writer.write(self.unsafe_get(UInt(i)))
-            writer.write('", ')
-            if i > 1:
-                break
-        writer.write(" ])")
-
-    fn __str__(self) -> String:
-        return String.write(self)
-
-    fn __repr__(self) -> String:
-        return String.write(self)
-
-
-struct ListArray(Movable, Representable, Sized, Stringable, Writable):
+struct ListArray(Movable, Sized):
     var data: Array
     var capacity: Int
 
@@ -634,30 +515,8 @@ struct ListArray(Movable, Representable, Sized, Stringable, Writable):
             children=first_child.children.copy(),
         )
 
-    fn write_to[W: Writer](self, mut writer: W):
-        """
-        Formats this ListArray to the provided Writer.
 
-        Parameters:
-            W: A type conforming to the Writable trait.
-
-        Args:
-            writer: The object to write to.
-        """
-
-        writer.write("ListArray(")
-        writer.write("length=")
-        writer.write(self.data.length)
-        writer.write(")")
-
-    fn __str__(self) -> String:
-        return String.write(self)
-
-    fn __repr__(self) -> String:
-        return String.write(self)
-
-
-struct StructArray(Movable, Representable, Sized, Stringable, Writable):
+struct StructArray(Movable, Sized):
     var data: Array
     var fields: List[Field]
     var capacity: Int
@@ -696,22 +555,6 @@ struct StructArray(Movable, Representable, Sized, Stringable, Writable):
     fn __len__(self) -> Int:
         return self.data.length
 
-    fn write_to[W: Writer](self, mut writer: W):
-        """
-        Formats this StructArray to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
-
-        Args:
-            writer: The object to write to.
-        """
-
-        writer.write("StructArray(")
-        writer.write("length=")
-        writer.write(self.data.length)
-        writer.write(")")
-
     fn _index_for_field_name(self, name: StringSlice) raises -> Int:
         for idx, ref field in enumerate(self.data.dtype.fields):
             if field.name == name:
@@ -725,17 +568,8 @@ struct StructArray(Movable, Representable, Sized, Stringable, Writable):
         """Access the field with the given name in the struct."""
         return self.data.children[self._index_for_field_name(name)][]
 
-    fn __str__(self) -> String:
-        return String.write(self)
 
-    fn __repr__(self) -> String:
-        return String.write(self)
-
-
-"""Implements a ChunkedArray class for handling pyarrow.Array-like objects."""
-
-
-struct ChunkedArray:
+struct ChunkedArray(Stringable, Writable):
     """An array-like composed from a (possibly empty) collection of pyarrow.Arrays.
 
     [Reference](https://arrow.apache.org/docs/python/generated/pyarrow.ChunkedArray.html#pyarrow-chunkedarray).

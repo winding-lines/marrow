@@ -5,35 +5,55 @@ from .dtypes import *
 trait ArrayVisitor:
     """Trait for type-dispatched array operations.
 
-    Implement this trait and call `visit(array, visitor)` to receive a
+    Implement this trait and call `visitor.visit(array)` to receive a
     concretely-typed array matching the runtime dtype of the Array.
+
+    All typed `visit` overloads have default no-op bodies, so implementors
+    only need to override the array kinds they care about. `visit(Array)`
+    dispatches to the typed overloads by default. `visit(ChunkedArray)`
+    dispatches to each chunk by default.
+
+    Typed arrays passed to visitor methods share the underlying buffer memory
+    with the original Array (ArcPointer semantics). Visitor methods are
+    `raises` to allow implementations that perform I/O or recursive dispatch
+    into nested arrays.
     """
 
-    fn visit_primitive[T: DataType](mut self, array: PrimitiveArray[T]): ...
-    fn visit_string(mut self, array: StringArray): ...
-    fn visit_list(mut self, array: ListArray): ...
-    fn visit_struct(mut self, array: StructArray): ...
+    fn visit[T: DataType](mut self, array: PrimitiveArray[T]) raises:
+        pass
 
+    fn visit(mut self, array: StringArray) raises:
+        pass
 
-fn visit[V: ArrayVisitor](array: Array, mut visitor: V) raises:
-    """Dispatch array to visitor based on its runtime dtype."""
+    fn visit(mut self, array: ListArray) raises:
+        pass
 
-    @parameter
-    for dtype in [
-        bool_,
-        int8, int16, int32, int64,
-        uint8, uint16, uint32, uint64,
-        float16, float32, float64,
-    ]:
-        if array.dtype == materialize[dtype]():
-            visitor.visit_primitive[dtype](PrimitiveArray[dtype](data=array.copy()))
-            return
+    fn visit(mut self, array: StructArray) raises:
+        pass
 
-    if array.dtype.is_string():
-        visitor.visit_string(StringArray(data=array.copy()))
-    elif array.dtype.is_list():
-        visitor.visit_list(ListArray(data=array.copy()))
-    elif array.dtype.is_struct():
-        visitor.visit_struct(StructArray(data=array.copy()))
-    else:
-        raise Error("visit: unsupported dtype {}".format(array.dtype))
+    fn visit(mut self, array: ChunkedArray) raises:
+        for chunk in array.chunks:
+            self.visit(chunk)
+
+    fn visit(mut self, array: Array) raises:
+        """Dispatch to the typed overload matching the runtime dtype."""
+
+        @parameter
+        for dtype in [
+            bool_,
+            int8, int16, int32, int64,
+            uint8, uint16, uint32, uint64,
+            float16, float32, float64,
+        ]:
+            if array.dtype == materialize[dtype]():
+                self.visit[dtype](PrimitiveArray[dtype](array.copy()))
+                return
+
+        if array.dtype.is_string():
+            self.visit(StringArray(array.copy()))
+        elif array.dtype.is_list():
+            self.visit(ListArray(array.copy()))
+        elif array.dtype.is_struct():
+            self.visit(StructArray(data=array.copy()))
+        else:
+            raise Error("visit: unsupported dtype {}".format(array.dtype))
