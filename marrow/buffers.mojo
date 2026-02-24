@@ -42,12 +42,6 @@ struct Buffer(Movable):
         self.owns = owns
         self.offset = offset
 
-    fn __moveinit__(out self, deinit existing: Self):
-        self.ptr = existing.ptr
-        self.size = existing.size
-        self.owns = existing.owns
-        self.offset = existing.offset
-
     fn swap(mut self, mut other: Self):
         """Swap the content of this buffer with another buffer."""
         swap(self.ptr, other.ptr)
@@ -178,10 +172,6 @@ struct Bitmap(Movable, Representable, Stringable, Writable):
     fn __init__(out self, var buffer: Buffer, offset: Int = 0):
         self.buffer = buffer^
         self.offset = offset
-
-    fn __moveinit__(out self, deinit existing: Self):
-        self.buffer = existing.buffer^
-        self.offset = existing.offset
 
     fn write_to[W: Writer](self, mut writer: W):
         """
