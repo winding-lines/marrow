@@ -59,8 +59,8 @@ struct ArrayPrinter(ArrayVisitor):
                 self.output.write("...")
                 break
             if array.is_valid(i):
-                var start = Int(array.offsets()[].unsafe_get[DType.int32](array.data.offset + i))
-                var end = Int(array.offsets()[].unsafe_get[DType.int32](array.data.offset + i + 1))
+                var start = Int(array.offsets[].unsafe_get[DType.int32](array.data.offset + i))
+                var end = Int(array.offsets[].unsafe_get[DType.int32](array.data.offset + i + 1))
                 ref first_child = array.data.children[0][]
                 self.visit(Array(
                     dtype=first_child.dtype.copy(),

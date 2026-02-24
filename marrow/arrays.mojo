@@ -204,6 +204,8 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
     var data: Array
     var offset: Int
     var capacity: Int
+    var bitmap: ArcPointer[Bitmap]
+    var buffer: ArcPointer[Buffer]
 
     fn __init__(out self, var data: Array, offset: Int = 0) raises:
         # TODO(kszucs): put a dtype constraint here
@@ -218,36 +220,27 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
 
         self.offset = data.offset + offset
         self.capacity = data.length
+        self.bitmap = data.bitmap
+        self.buffer = data.buffers[0]
         self.data = data^
 
     fn __init__(out self, capacity: Int = 0, offset: Int = 0):
         self.capacity = capacity
         self.offset = offset
-        bitmap = ArcPointer(Bitmap.alloc(capacity))
-        buffer = ArcPointer(Buffer.alloc[Self.T.native](capacity))
+        self.bitmap = ArcPointer(Bitmap.alloc(capacity))
+        self.buffer = ArcPointer(Buffer.alloc[Self.T.native](capacity))
         self.data = Array(
             dtype=materialize[Self.T](),
             length=0,
-            bitmap=bitmap,
-            buffers=[buffer],
+            bitmap=self.bitmap,
+            buffers=[self.buffer],
             children=[],
             offset=self.offset,
         )
 
-    fn __moveinit__(out self, deinit existing: Self):
-        self.data = existing.data^
-        self.capacity = existing.capacity
-        self.offset = existing.offset
-
-    fn bitmap(self) -> ref [self.data.bitmap] ArcPointer[Bitmap]:
-        return self.data.bitmap
-
-    fn buffer(self) -> ref [self.data.buffers] ArcPointer[Buffer]:
-        return self.data.buffers[0]
-
     fn grow(mut self, capacity: Int):
-        self.bitmap()[].grow(capacity)
-        self.buffer()[].grow[Self.T.native](capacity)
+        self.bitmap[].grow(capacity)
+        self.buffer[].grow[Self.T.native](capacity)
         self.capacity = capacity
 
     @always_inline
@@ -256,16 +249,16 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
 
     @always_inline
     fn is_valid(self, index: Int) -> Bool:
-        return self.bitmap()[].unsafe_get(index + self.offset)
+        return self.bitmap[].unsafe_get(index + self.offset)
 
     @always_inline
     fn unsafe_get(self, index: Int) -> Self.scalar:
-        return self.buffer()[].unsafe_get[Self.T.native](index + self.offset)
+        return self.buffer[].unsafe_get[Self.T.native](index + self.offset)
 
     @always_inline
     fn unsafe_set(mut self, index: Int, value: Self.scalar):
-        self.bitmap()[].unsafe_set(index + self.offset, True)
-        self.buffer()[].unsafe_set[Self.T.native](index + self.offset, value)
+        self.bitmap[].unsafe_set(index + self.offset, True)
+        self.buffer[].unsafe_set[Self.T.native](index + self.offset, value)
 
     @always_inline
     fn unsafe_append(mut self, value: Self.scalar):
@@ -310,11 +303,11 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
         drop_nulls[dtype](
             self.data.buffers[0], self.data.bitmap, 0, self.data.length
         )
-        self.data.length = self.bitmap()[].buffer.bit_count()
+        self.data.length = self.bitmap[].buffer.bit_count()
 
     fn null_count(self) -> Int:
         """Returns the number of null values in the array."""
-        var valid_count = self.bitmap()[].buffer.bit_count()
+        var valid_count = self.bitmap[].buffer.bit_count()
         return self.data.length - valid_count
 
 
@@ -335,6 +328,9 @@ comptime Float64Array = PrimitiveArray[float64]
 struct StringArray(Movable, Sized):
     var data: Array
     var capacity: Int
+    var bitmap: ArcPointer[Bitmap]
+    var offsets: ArcPointer[Buffer]
+    var values: ArcPointer[Buffer]
 
     fn __init__(out self, var data: Array) raises:
         if data.dtype != materialize[string]():
@@ -345,71 +341,60 @@ struct StringArray(Movable, Sized):
             raise Error("StringArray requires exactly two buffers")
 
         self.capacity = data.length
+        self.bitmap = data.bitmap
+        self.offsets = data.buffers[0]
+        self.values = data.buffers[1]
         self.data = data^
 
-    fn bitmap(self) -> ref [self.data.bitmap] ArcPointer[Bitmap]:
-        return self.data.bitmap
-
-    fn offsets(self) -> ref [self.data.buffers] ArcPointer[Buffer]:
-        return self.data.buffers[0]
-
-    fn values(self) -> ref [self.data.buffers] ArcPointer[Buffer]:
-        return self.data.buffers[1]
-
     fn __init__(out self, capacity: Int = 0):
-        var bitmap = Bitmap.alloc(capacity)
         # TODO(kszucs): initial values capacity should be either 0 or some value received from the user
-        var values = Buffer.alloc[DType.uint8](capacity)
-        var offsets = Buffer.alloc[DType.uint32](capacity + 1)
-        offsets.unsafe_set[DType.uint32](0, 0)
-
         self.capacity = capacity
+        self.bitmap = ArcPointer(Bitmap.alloc(capacity))
+        self.offsets = ArcPointer(Buffer.alloc[DType.uint32](capacity + 1))
+        self.values = ArcPointer(Buffer.alloc[DType.uint8](capacity))
+        self.offsets[].unsafe_set[DType.uint32](0, 0)
         self.data = Array(
             dtype=materialize[string](),
             length=0,
-            bitmap=ArcPointer(bitmap^),
-            buffers=[ArcPointer(offsets^), ArcPointer(values^)],
+            bitmap=self.bitmap,
+            buffers=[self.offsets, self.values],
             children=[],
             offset=0,
         )
-
-    fn __moveinit__(out self, deinit existing: Self):
-        self.data = existing.data^
-        self.capacity = existing.capacity
 
     fn __len__(self) -> Int:
         return self.data.length
 
     fn grow(mut self, capacity: Int):
-        self.bitmap()[].grow(capacity)
-        self.offsets()[].grow[DType.uint32](capacity + 1)
+        self.bitmap[].grow(capacity)
+        self.offsets[].grow[DType.uint32](capacity + 1)
         self.capacity = capacity
 
     # fn shrink_to_fit(out self):
 
     fn is_valid(self, index: Int) -> Bool:
-        return self.bitmap()[].unsafe_get(index)
+        return self.bitmap[].unsafe_get(index)
 
     fn unsafe_append(mut self, value: String):
         # todo(kszucs): use unsafe set
         var index = self.data.length
-        var last_offset = self.offsets()[].unsafe_get[DType.uint32](index)
+        var last_offset = self.offsets[].unsafe_get[DType.uint32](index)
         var next_offset = last_offset + len(value)
         self.data.length += 1
-        self.bitmap()[].unsafe_set(index, True)
-        self.offsets()[].unsafe_set[DType.uint32](index + 1, next_offset)
-        self.values()[].grow[DType.uint8](next_offset)
-        var dst_address = self.values()[].get_ptr_at(Int(last_offset))
+        self.bitmap[].unsafe_set(index, True)
+        self.offsets[].unsafe_set[DType.uint32](index + 1, next_offset)
+        self.values[].grow[DType.uint8](next_offset)
+        var dst_address = self.values[].get_ptr_at(Int(last_offset))
         var src_address = value.unsafe_ptr()
         memcpy(dest=dst_address, src=src_address, count=len(value))
 
     fn unsafe_get(self, index: UInt) -> StringSlice[ImmutAnyOrigin]:
         var offset_idx = Int(index) + self.data.offset
-        var start_offset = self.offsets()[].unsafe_get[DType.uint32](offset_idx)
-        var end_offset = self.offsets()[].unsafe_get[DType.uint32](
+        var start_offset = self.offsets[].unsafe_get[DType.uint32](offset_idx)
+        var end_offset = self.offsets[].unsafe_get[DType.uint32](
             offset_idx + 1
         )
-        var address = self.values()[].get_ptr_at(Int(start_offset))
+        var address = self.values[].get_ptr_at(Int(start_offset))
         var length = Int(end_offset) - Int(start_offset)
         return StringSlice(
             unsafe_from_utf8=Span[Byte](
@@ -418,8 +403,8 @@ struct StringArray(Movable, Sized):
         )
 
     fn unsafe_set(mut self, index: Int, value: String) raises:
-        var start_offset = self.offsets()[].unsafe_get[DType.int32](index)
-        var end_offset = self.offsets()[].unsafe_get[DType.int32](index + 1)
+        var start_offset = self.offsets[].unsafe_get[DType.int32](index)
+        var end_offset = self.offsets[].unsafe_get[DType.int32](index + 1)
         var length = Int(end_offset - start_offset)
 
         if length != len(value):
@@ -428,7 +413,7 @@ struct StringArray(Movable, Sized):
                 " length"
             )
 
-        var dst_address = self.values()[].get_ptr_at(Int(start_offset))
+        var dst_address = self.values[].get_ptr_at(Int(start_offset))
         var src_address = value.unsafe_ptr()
         memcpy(dest=dst_address, src=src_address, count=length)
 
@@ -436,6 +421,9 @@ struct StringArray(Movable, Sized):
 struct ListArray(Movable, Sized):
     var data: Array
     var capacity: Int
+    var bitmap: ArcPointer[Bitmap]
+    var offsets: ArcPointer[Buffer]
+    var values: ArcPointer[Array]
 
     fn __init__(out self, var data: Array) raises:
         if not data.dtype.is_list():
@@ -448,16 +436,10 @@ struct ListArray(Movable, Sized):
             raise Error("ListArray requires exactly one child array")
 
         self.capacity = data.length
+        self.bitmap = data.bitmap
+        self.offsets = data.buffers[0]
+        self.values = data.children[0]
         self.data = data^
-
-    fn bitmap(self) -> ArcPointer[Bitmap]:
-        return self.data.bitmap
-
-    fn offsets(self) -> ArcPointer[Buffer]:
-        return self.data.buffers[0]
-
-    fn values(self) -> ArcPointer[Array]:
-        return self.data.children[0]
 
     @staticmethod
     fn from_values(var values: Array, capacity: Int = 1) raises -> ListArray:
@@ -488,20 +470,16 @@ struct ListArray(Movable, Sized):
         )
         return ListArray(data^)
 
-    fn __moveinit__(out self, deinit existing: Self):
-        self.data = existing.data^
-        self.capacity = existing.capacity
-
     fn __len__(self) -> Int:
         return self.data.length
 
     fn is_valid(self, index: Int) -> Bool:
-        return self.bitmap()[].unsafe_get(index)
+        return self.bitmap[].unsafe_get(index)
 
     fn unsafe_append(mut self, is_valid: Bool):
-        self.bitmap()[].unsafe_set(self.data.length, is_valid)
-        self.offsets()[].unsafe_set[DType.uint32](
-            self.data.length + 1, self.values()[].length
+        self.bitmap[].unsafe_set(self.data.length, is_valid)
+        self.offsets[].unsafe_set[DType.uint32](
+            self.data.length + 1, self.values[].length
         )
         self.data.length += 1
 
@@ -511,10 +489,10 @@ struct ListArray(Movable, Sized):
         Use an out argument to allow the caller to re-use memory while iterating over a pyarrow structure.
         """
         var start = Int(
-            self.offsets()[].unsafe_get[DType.int32](self.data.offset + index)
+            self.offsets[].unsafe_get[DType.int32](self.data.offset + index)
         )
         var end = Int(
-            self.offsets()[].unsafe_get[DType.int32](
+            self.offsets[].unsafe_get[DType.int32](
                 self.data.offset + index + 1
             )
         )
@@ -559,11 +537,6 @@ struct StructArray(Movable, Sized):
         self.fields = data.dtype.fields.copy()
         self.capacity = data.length
         self.data = data^
-
-    fn __moveinit__(out self, deinit existing: Self):
-        self.data = existing.data^
-        self.fields = existing.fields^
-        self.capacity = existing.capacity
 
     fn __len__(self) -> Int:
         return self.data.length

@@ -185,14 +185,14 @@ def test_drop_null() -> None:
     # Check the setup.
     assert_equal(primitive_array.null_count(), 5)
     assert_bitmap_set(
-        primitive_array.bitmap()[], [1, 3, 5, 7, 9], "check setup"
+        primitive_array.bitmap[], [1, 3, 5, 7, 9], "check setup"
     )
 
     primitive_array.drop_nulls[DType.uint8]()
     assert_equal(primitive_array.unsafe_get(0), 1)
     assert_equal(primitive_array.unsafe_get(1), 3)
     assert_equal(primitive_array.null_count(), 0)
-    assert_bitmap_set(primitive_array.bitmap()[], [0, 1, 2, 3, 4], "after drop")
+    assert_bitmap_set(primitive_array.bitmap[], [0, 1, 2, 3, 4], "after drop")
 
 
 def test_primitive_array_with_offset():
