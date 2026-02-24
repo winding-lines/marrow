@@ -46,14 +46,14 @@ trait ArrayVisitor:
             float16, float32, float64,
         ]:
             if array.dtype == materialize[dtype]():
-                self.visit[dtype](PrimitiveArray[dtype](array.copy()))
+                self.visit[dtype](array.copy().as_primitive[dtype]())
                 return
 
         if array.dtype.is_string():
-            self.visit(StringArray(array.copy()))
+            self.visit(array.copy().as_string())
         elif array.dtype.is_list():
-            self.visit(ListArray(array.copy()))
+            self.visit(array.copy().as_list())
         elif array.dtype.is_struct():
-            self.visit(StructArray(data=array.copy()))
+            self.visit(array.copy().as_struct())
         else:
             raise Error("visit: unsupported dtype {}".format(array.dtype))

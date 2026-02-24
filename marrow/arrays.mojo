@@ -118,6 +118,9 @@ struct Array(Copyable, Movable, Stringable):
     fn as_list(var self) raises -> ListArray:
         return ListArray(self^)
 
+    fn as_struct(var self) raises -> StructArray:
+        return StructArray(data=self^)
+
     fn append_to_array(
         deinit self: Array, mut combined: Array, start: Int
     ) -> Int:
