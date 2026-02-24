@@ -19,11 +19,8 @@ struct Array(Copyable, Movable, Stringable):
     var offset: Int
 
     @staticmethod
-    fn from_buffer[
-        dtype: DataType
-    ](var buffer: Buffer, length: Int) -> Array:
-        """Build an Array from a buffer where all the values are not null.
-        """
+    fn from_buffer[dtype: DataType](var buffer: Buffer, length: Int) -> Array:
+        """Build an Array from a buffer where all the values are not null."""
         var bitmap = Bitmap.alloc(length)
         bitmap.unsafe_range_set(0, length, True)
         return Array(
@@ -72,6 +69,7 @@ struct Array(Copyable, Movable, Stringable):
 
     fn __str__(self) -> String:
         from .pretty import ArrayPrinter
+
         var printer = ArrayPrinter()
         try:
             printer.visit(self)
@@ -324,7 +322,6 @@ comptime Float32Array = PrimitiveArray[float32]
 comptime Float64Array = PrimitiveArray[float64]
 
 
-
 struct StringArray(Movable, Sized):
     var data: Array
     var capacity: Int
@@ -391,9 +388,7 @@ struct StringArray(Movable, Sized):
     fn unsafe_get(self, index: UInt) -> StringSlice[ImmutAnyOrigin]:
         var offset_idx = Int(index) + self.data.offset
         var start_offset = self.offsets[].unsafe_get[DType.uint32](offset_idx)
-        var end_offset = self.offsets[].unsafe_get[DType.uint32](
-            offset_idx + 1
-        )
+        var end_offset = self.offsets[].unsafe_get[DType.uint32](offset_idx + 1)
         var address = self.values[].get_ptr_at(Int(start_offset))
         var length = Int(end_offset) - Int(start_offset)
         return StringSlice(
@@ -492,9 +487,7 @@ struct ListArray(Movable, Sized):
             self.offsets[].unsafe_get[DType.int32](self.data.offset + index)
         )
         var end = Int(
-            self.offsets[].unsafe_get[DType.int32](
-                self.data.offset + index + 1
-            )
+            self.offsets[].unsafe_get[DType.int32](self.data.offset + index + 1)
         )
         ref first_child = self.data.children[0][]
         return Array(
@@ -550,7 +543,7 @@ struct StructArray(Movable, Sized):
 
     fn unsafe_get(
         self, name: StringSlice
-    ) raises -> ref [self.data.children[0]] Array:
+    ) raises -> ref[self.data.children[0]] Array:
         """Access the field with the given name in the struct."""
         return self.data.children[self._index_for_field_name(name)][]
 
@@ -580,6 +573,7 @@ struct ChunkedArray(Stringable):
 
     fn __str__(self) -> String:
         from .pretty import ArrayPrinter
+
         var printer = ArrayPrinter()
         try:
             printer.visit(self)
@@ -587,7 +581,7 @@ struct ChunkedArray(Stringable):
             pass
         return printer^.finish()
 
-    fn chunk(self, index: Int) -> ref [self.chunks] Array:
+    fn chunk(self, index: Int) -> ref[self.chunks] Array:
         """Returns the chunk at the given index.
 
         Args:

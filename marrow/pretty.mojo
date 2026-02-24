@@ -1,6 +1,7 @@
 from .arrays import *
 from .visitor import ArrayVisitor
 
+
 struct ArrayPrinter(ArrayVisitor):
     """Pretty-prints arrays to a String buffer with a configurable element limit.
 
@@ -59,17 +60,27 @@ struct ArrayPrinter(ArrayVisitor):
                 self.output.write("...")
                 break
             if array.is_valid(i):
-                var start = Int(array.offsets[].unsafe_get[DType.int32](array.data.offset + i))
-                var end = Int(array.offsets[].unsafe_get[DType.int32](array.data.offset + i + 1))
+                var start = Int(
+                    array.offsets[].unsafe_get[DType.int32](
+                        array.data.offset + i
+                    )
+                )
+                var end = Int(
+                    array.offsets[].unsafe_get[DType.int32](
+                        array.data.offset + i + 1
+                    )
+                )
                 ref first_child = array.data.children[0][]
-                self.visit(Array(
-                    dtype=first_child.dtype.copy(),
-                    bitmap=first_child.bitmap,
-                    buffers=first_child.buffers.copy(),
-                    offset=start,
-                    length=end - start,
-                    children=first_child.children.copy(),
-                ))
+                self.visit(
+                    Array(
+                        dtype=first_child.dtype.copy(),
+                        bitmap=first_child.bitmap,
+                        buffers=first_child.buffers.copy(),
+                        offset=start,
+                        length=end - start,
+                        children=first_child.children.copy(),
+                    )
+                )
             else:
                 self.output.write("NULL")
         self.output.write("])")

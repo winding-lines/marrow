@@ -3,11 +3,17 @@ from memory import ArcPointer
 from marrow.arrays import *
 from marrow.dtypes import *
 from marrow.buffers import Buffer, Bitmap
-from marrow.test_fixtures.arrays import build_array_data, assert_bitmap_set, build_list_of_list, build_struct
+from marrow.test_fixtures.arrays import (
+    build_array_data,
+    assert_bitmap_set,
+    build_list_of_list,
+    build_struct,
+)
 from marrow.test_fixtures.bool_array import as_bool_array_scalar
 
 
 # --- Array (base) tests ---
+
 
 def test_array_data_with_offset():
     """Test ArrayData with offset functionality."""
@@ -61,7 +67,6 @@ def test_array_data_fieldwise_init():
     assert_equal(array_data.dtype, materialize[int8]())
     assert_equal(array_data.length, 5)
     assert_equal(array_data.offset, 3)
-
 
 
 def test_array_from_primitive():
@@ -128,6 +133,7 @@ def test_array_move():
 
 # --- PrimitiveArray tests ---
 
+
 def test_boolean_array():
     var a = BoolArray()
     assert_equal(len(a), 0)
@@ -184,9 +190,7 @@ def test_drop_null() -> None:
     #
     # Check the setup.
     assert_equal(primitive_array.null_count(), 5)
-    assert_bitmap_set(
-        primitive_array.bitmap[], [1, 3, 5, 7, 9], "check setup"
-    )
+    assert_bitmap_set(primitive_array.bitmap[], [1, 3, 5, 7, 9], "check setup")
 
     primitive_array.drop_nulls[DType.uint8]()
     assert_equal(primitive_array.unsafe_get(0), 1)
@@ -275,9 +279,8 @@ def test_primitive_array_nulls_with_offset():
         assert_false(null_arr.is_valid(i))
 
 
-
-
 # --- StringArray tests ---
+
 
 def test_string_builder():
     var a = StringArray()
@@ -299,17 +302,18 @@ def test_string_builder():
 
 # --- ListArray / StructArray tests ---
 
+
 def test_list_int_array():
     var ints = Int64Array(
-        Array.from_buffer[int64](
-            Buffer.from_values[DType.int64](1, 2, 3), 3
-        )
+        Array.from_buffer[int64](Buffer.from_values[DType.int64](1, 2, 3), 3)
     )
     var lists = ListArray.from_values(ints^)
     assert_equal(lists.data.dtype, list_(materialize[int64]()))
 
     var first_value = lists.unsafe_get(0)
-    assert_equal(first_value.__str__(), "PrimitiveArray[DataType(code=int64)]([1, 2, 3])")
+    assert_equal(
+        first_value.__str__(), "PrimitiveArray[DataType(code=int64)]([1, 2, 3])"
+    )
 
     assert_equal(len(lists), 1)
 
@@ -385,7 +389,6 @@ def test_struct_array():
     assert_equal(data.dtype.fields[2].name, "active")
 
 
-
 def test_struct_array_unsafe_get():
     var struct_array = build_struct()
     ref int_data_a = struct_array.unsafe_get("int_data_a")
@@ -399,6 +402,7 @@ def test_struct_array_unsafe_get():
 
 
 # --- ChunkedArray tests ---
+
 
 def test_chunked_array():
     var first_array_data = build_array_data(1, 0)
