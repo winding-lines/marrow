@@ -6,8 +6,8 @@ from marrow.compute.arithmetic import add
 
 
 def test_add_typed():
-    var a = array[int32](1, 2, 3, 4)
-    var b = array[int32](10, 20, 30, 40)
+    var a = array[int32]([1, 2, 3, 4])
+    var b = array[int32]([10, 20, 30, 40])
     var result = add[int32](a, b)
     assert_equal(len(result), 4)
     assert_equal(result.unsafe_get(0), 11)
@@ -24,7 +24,7 @@ def test_add_with_nulls():
     # index 2 is null (bitmap zero-initialized, length set manually)
     a.length = 3
 
-    var b = array[int32](10, 20, 30)
+    var b = array[int32]([10, 20, 30])
     var result = add[int32](a, b)
     assert_equal(len(result), 3)
     assert_true(result.is_valid(0))
@@ -35,8 +35,8 @@ def test_add_with_nulls():
 
 
 def test_add_length_mismatch():
-    var a = array[int32](1, 2)
-    var b = array[int32](1, 2, 3)
+    var a = array[int32]([1, 2])
+    var b = array[int32]([1, 2, 3])
     try:
         _ = add[int32](a, b)
         assert_true(False, "should have raised")
@@ -45,8 +45,8 @@ def test_add_length_mismatch():
 
 
 def test_add_untyped():
-    var a = Array(array[int64](1, 2, 3))
-    var b = Array(array[int64](4, 5, 6))
+    var a = Array(array[int64]([1, 2, 3]))
+    var b = Array(array[int64]([4, 5, 6]))
     var result = add(a, b)
     assert_equal(result.length, 3)
     # Verify by downcasting back
@@ -57,8 +57,8 @@ def test_add_untyped():
 
 
 def test_add_empty():
-    var a = array[int32]()
-    var b = array[int32]()
+    var a = array[int32]([])
+    var b = array[int32]([])
     var result = add[int32](a, b)
     assert_equal(len(result), 0)
 

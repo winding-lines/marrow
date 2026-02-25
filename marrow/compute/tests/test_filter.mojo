@@ -25,7 +25,7 @@ def test_drop_nulls_typed():
 
 
 def test_drop_nulls_no_nulls():
-    var a = array[int64](1, 2, 3)
+    var a = array[int64]([1, 2, 3])
     var result = drop_nulls[int64](a)
     assert_equal(len(result), 3)
     assert_equal(result.unsafe_get(0), 1)
@@ -40,7 +40,7 @@ def test_drop_nulls_all_nulls():
 
 
 def test_drop_nulls_empty():
-    var a = array[int32]()
+    var a = array[int32]([])
     var result = drop_nulls[int32](a)
     assert_equal(len(result), 0)
 

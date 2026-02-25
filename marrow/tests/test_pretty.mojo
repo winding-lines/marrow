@@ -24,7 +24,7 @@ def _fmt_chunked(arr: ChunkedArray, limit: Int = 3) -> String:
 
 
 def test_format_primitive():
-    var a = array[int32](1, 2, 3)
+    var a = array[int32]([1, 2, 3])
     assert_equal(
         _fmt(Array(a^)),
         "PrimitiveArray[DataType(code=int32)]([1, 2, 3])",
@@ -32,7 +32,7 @@ def test_format_primitive():
 
 
 def test_format_primitive_with_limit():
-    var a = array[int32](1, 2, 3, 4, 5)
+    var a = array[int32]([1, 2, 3, 4, 5])
     assert_equal(
         _fmt(Array(a^), limit=3),
         "PrimitiveArray[DataType(code=int32)]([1, 2, 3, ...])",
@@ -40,7 +40,7 @@ def test_format_primitive_with_limit():
 
 
 def test_format_bool():
-    var a = array(True, False)
+    var a = array([True, False])
     assert_equal(
         _fmt(Array(a^)),
         "PrimitiveArray[DataType(code=bool)]([True, False])",
@@ -124,15 +124,15 @@ def test_format_chunked():
 
 def test_format_limits():
     assert_equal(
-        _fmt(Array(array[int32](1, 2, 3, 4, 5, 6, 7, 8, 9, 10)), limit=0),
+        _fmt(Array(array[int32]([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])), limit=0),
         "PrimitiveArray[DataType(code=int32)]([...])",
     )
     assert_equal(
-        _fmt(Array(array[int32](1, 2, 3, 4, 5, 6, 7, 8, 9, 10)), limit=1),
+        _fmt(Array(array[int32]([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])), limit=1),
         "PrimitiveArray[DataType(code=int32)]([1, ...])",
     )
     assert_equal(
-        _fmt(Array(array[int32](1, 2, 3, 4, 5, 6, 7, 8, 9, 10)), limit=10),
+        _fmt(Array(array[int32]([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])), limit=10),
         "PrimitiveArray[DataType(code=int32)]([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])",
     )
 

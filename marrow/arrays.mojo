@@ -552,8 +552,8 @@ struct ChunkedArray(Stringable):
         return combined^
 
 
-fn array[T: DataType](*values: Scalar[T.native]) -> PrimitiveArray[T]:
-    """Create a primitive array with the given values."""
+fn array[T: DataType](values: List[Scalar[T.native]]) -> PrimitiveArray[T]:
+    """Create a primitive array from a list of values."""
     var a = PrimitiveArray[T](len(values))
     for value in values:
         a.unsafe_append(value)
@@ -561,13 +561,14 @@ fn array[T: DataType](*values: Scalar[T.native]) -> PrimitiveArray[T]:
 
 
 # TODO(stdlib): Bool literals (True/False) cannot be implicitly converted to
-# Scalar[DType.bool] in variadic arguments, unlike integer literals which
-# coerce freely to any Scalar[DType.int*]. A dedicated overload is required
-# until Mojo supports this implicit coercion.
+# Scalar[DType.bool] in list literals, unlike integer literals which coerce
+# freely to any Scalar[DType.int*]. A dedicated overload is required until
+# Mojo supports this implicit coercion.
 # Upstream issue candidate: https://github.com/modular/modular
-fn array(*values: Bool) -> BoolArray:
-    """Create a bool array with the given values."""
+fn array(values: List[Bool]) -> BoolArray:
+    """Create a bool array from a list of values."""
     var a = BoolArray(len(values))
     for value in values:
         a.unsafe_append(BoolArray.scalar(value))
     return a^
+

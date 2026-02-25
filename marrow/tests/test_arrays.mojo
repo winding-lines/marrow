@@ -70,7 +70,7 @@ def test_array_data_fieldwise_init():
 
 
 def test_array_from_primitive():
-    var prim = array[int32](1, 2, 3)
+    var prim = array[int32]([1, 2, 3])
     var a = Array(prim^)
     assert_equal(a.length, 3)
     assert_equal(a.dtype, materialize[int32]())
@@ -175,11 +175,24 @@ def test_append():
 
 
 def test_array_from_ints():
-    var g = array[int8](1, 2)
+    var g = array[int8]([1, 2])
     assert_equal(len(g), 2)
     assert_equal(materialize[g.dtype](), materialize[int8]())
     assert_equal(g.unsafe_get(0), 1)
     assert_equal(g.unsafe_get(1), 2)
+
+
+def test_array_from_list_overload():
+    var g = array[int8]([1, 2])
+    assert_equal(len(g), 2)
+    assert_equal(g.unsafe_get(0), 1)
+    assert_equal(g.unsafe_get(1), 2)
+
+    var b = array([True, False, True])
+    assert_equal(len(b), 3)
+    assert_equal(b.unsafe_get(0), BoolArray.scalar(True))
+    assert_equal(b.unsafe_get(1), BoolArray.scalar(False))
+    assert_equal(b.unsafe_get(2), BoolArray.scalar(True))
 
 
 def test_drop_null() -> None:
@@ -332,7 +345,7 @@ def test_list_int_array():
 
 
 def test_list_bool_array():
-    var bools = array(True, False, True)
+    var bools = array([True, False, True])
 
     var lists = ListArray.from_values(bools^)
     assert_equal(len(lists), 1)

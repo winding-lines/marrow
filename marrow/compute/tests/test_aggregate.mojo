@@ -6,7 +6,7 @@ from marrow.compute.aggregate import sum
 
 
 def test_sum_typed():
-    var a = array[int64](1, 2, 3, 4, 5)
+    var a = array[int64]([1, 2, 3, 4, 5])
     var result = sum[int64](a)
     assert_equal(result, 15)
 
@@ -29,13 +29,13 @@ def test_sum_all_nulls():
 
 
 def test_sum_empty():
-    var a = array[int32]()
+    var a = array[int32]([])
     var result = sum[int32](a)
     assert_equal(result, 0)
 
 
 def test_sum_untyped():
-    var a = Array(array[int64](1, 2, 3))
+    var a = Array(array[int64]([1, 2, 3]))
     var result = sum(a)
     assert_equal(result, 6.0)
 
