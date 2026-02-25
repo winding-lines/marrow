@@ -25,7 +25,7 @@ struct ArrayPrinter(ArrayVisitor):
         self.output.write("PrimitiveArray[")
         self.output.write(materialize[T]())
         self.output.write("]([")
-        for i in range(array.data.length):
+        for i in range(array.length):
             if i > 0:
                 self.output.write(", ")
             if i >= self.limit:
@@ -39,7 +39,7 @@ struct ArrayPrinter(ArrayVisitor):
 
     fn visit(mut self, array: StringArray) raises:
         self.output.write("StringArray([")
-        for i in range(array.data.length):
+        for i in range(array.length):
             if i > 0:
                 self.output.write(", ")
             if i >= self.limit:
@@ -53,7 +53,7 @@ struct ArrayPrinter(ArrayVisitor):
 
     fn visit(mut self, array: ListArray) raises:
         self.output.write("ListArray([")
-        for i in range(array.data.length):
+        for i in range(array.length):
             if i > 0:
                 self.output.write(", ")
             if i >= self.limit:
@@ -62,15 +62,15 @@ struct ArrayPrinter(ArrayVisitor):
             if array.is_valid(i):
                 var start = Int(
                     array.offsets[].unsafe_get[DType.int32](
-                        array.data.offset + i
+                        array.offset + i
                     )
                 )
                 var end = Int(
                     array.offsets[].unsafe_get[DType.int32](
-                        array.data.offset + i + 1
+                        array.offset + i + 1
                     )
                 )
-                ref first_child = array.data.children[0][]
+                ref first_child = array.values[]
                 self.visit(
                     Array(
                         dtype=first_child.dtype.copy(),
@@ -87,15 +87,15 @@ struct ArrayPrinter(ArrayVisitor):
 
     fn visit(mut self, array: StructArray) raises:
         self.output.write("StructArray({")
-        if len(array.data.children) > 0:
-            for i in range(len(array.fields)):
+        if len(array.children) > 0:
+            for i in range(len(array.dtype.fields)):
                 if i > 0:
                     self.output.write(", ")
-                ref field = array.fields[i]
+                ref field = array.dtype.fields[i]
                 self.output.write("'")
                 self.output.write(field.name)
                 self.output.write("': ")
-                self.visit(array.data.children[i][])
+                self.visit(array.children[i][])
         self.output.write("})")
 
     fn visit(mut self, array: ChunkedArray) raises:

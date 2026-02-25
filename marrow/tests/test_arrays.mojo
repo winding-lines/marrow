@@ -3,6 +3,7 @@ from memory import ArcPointer
 from marrow.arrays import *
 from marrow.dtypes import *
 from marrow.buffers import Buffer, Bitmap
+from marrow.compute.filter import drop_nulls
 from marrow.test_fixtures.arrays import (
     build_array_data,
     assert_bitmap_set,
@@ -183,20 +184,20 @@ def test_array_from_ints():
 
 
 def test_drop_null() -> None:
-    """Test the drop null function."""
+    """Test the drop null function via the compute module."""
+    from marrow.compute.filter import drop_nulls
+
     var array_data = build_array_data(10, 5)
 
     var primitive_array = PrimitiveArray[uint8](array_data^)
-    #
     # Check the setup.
     assert_equal(primitive_array.null_count(), 5)
     assert_bitmap_set(primitive_array.bitmap[], [1, 3, 5, 7, 9], "check setup")
 
-    primitive_array.drop_nulls[DType.uint8]()
-    assert_equal(primitive_array.unsafe_get(0), 1)
-    assert_equal(primitive_array.unsafe_get(1), 3)
-    assert_equal(primitive_array.null_count(), 0)
-    assert_bitmap_set(primitive_array.bitmap[], [0, 1, 2, 3, 4], "after drop")
+    var result = drop_nulls[uint8](primitive_array)
+    assert_equal(result.unsafe_get(0), 1)
+    assert_equal(result.unsafe_get(1), 3)
+    assert_equal(result.null_count(), 0)
 
 
 def test_primitive_array_with_offset():
@@ -215,7 +216,15 @@ def test_primitive_array_with_offset():
     assert_equal(arr.unsafe_get(1), 200)
 
     # Create a copy of array with offset, should point to the same buffers.
-    var arr_with_offset = PrimitiveArray[int32](arr.data.copy(), offset=2)
+    var arr_data = Array(
+        dtype=materialize[int32](),
+        length=arr.length,
+        bitmap=arr.bitmap,
+        buffers=[arr.buffer],
+        children=[],
+        offset=arr.offset,
+    )
+    var arr_with_offset = PrimitiveArray[int32](arr_data, offset=2)
     assert_equal(arr_with_offset.offset, 2)
 
     # Test that offset affects get operations
@@ -246,8 +255,8 @@ def test_primitive_array_constructor_with_offset():
     var arr2 = Int8Array(10, offset=5)  # Explicit offset
     assert_equal(arr2.offset, 5)
 
-    # Test that data.offset is also set correctly
-    assert_equal(arr2.data.offset, 5)
+    # Test that offset is also set correctly
+    assert_equal(arr2.offset, 5)
 
 
 def test_primitive_array_offset_with_validity():
@@ -272,7 +281,6 @@ def test_primitive_array_nulls_with_offset():
     """
     var null_arr = Int64Array.nulls(5)
     assert_equal(null_arr.offset, 0)
-    assert_equal(null_arr.data.offset, 0)
 
     # All elements should be invalid (null)
     for i in range(5):
@@ -308,7 +316,7 @@ def test_list_int_array():
         Array.from_buffer[int64](Buffer.from_values[DType.int64](1, 2, 3), 3)
     )
     var lists = ListArray.from_values(ints^)
-    assert_equal(lists.data.dtype, list_(materialize[int64]()))
+    assert_equal(lists.dtype, list_(materialize[int64]()))
 
     var first_value = lists.unsafe_get(0)
     assert_equal(
@@ -417,7 +425,7 @@ def test_chunked_array():
 
     assert_equal(chunked_array.chunk(0).length, 1)
     var second_chunk = chunked_array.chunk(1).copy().as_uint8()
-    assert_equal(second_chunk.data.length, 2)
+    assert_equal(second_chunk.length, 2)
     assert_equal(second_chunk.unsafe_get(0), 0)
     assert_equal(second_chunk.unsafe_get(1), 1)
 

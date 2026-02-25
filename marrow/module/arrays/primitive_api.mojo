@@ -54,10 +54,12 @@ fn array(content: PythonObject) raises -> PythonObject:
     for v in content:
         actual.append(Int(py=v))
 
+    var offset = actual.offset
+    var capacity = actual.capacity
     var result = PrimitiveArray(
-        data=actual.data.copy(),
-        offset=actual.offset,
-        capacity=actual.capacity,
+        data=Array(actual^),
+        offset=offset,
+        capacity=capacity,
     )
     return PythonObject(alloc=result^)
 

@@ -148,8 +148,8 @@ def test_format_empty_array():
 
 def test_format_all_nulls():
     var arr = Int32Array(3)
-    arr.data.length = 3
-    arr.data.bitmap[].unsafe_range_set(0, 3, False)
+    arr.length = 3
+    arr.bitmap[].unsafe_range_set(0, 3, False)
     assert_equal(
         _fmt(Array(arr^)),
         "PrimitiveArray[DataType(code=int32)]([NULL, NULL, NULL])",
@@ -160,8 +160,8 @@ def test_format_mixed_nulls():
     var arr = Int32Array(5)
     arr.append(1)
     arr.append(2)
-    arr.data.bitmap[].unsafe_set(2, False)
-    arr.data.length = 3
+    arr.bitmap[].unsafe_set(2, False)
+    arr.length = 3
     arr.append(4)
     assert_equal(
         _fmt(Array(arr^)),

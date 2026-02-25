@@ -14,16 +14,16 @@ struct ElementCounter(ArrayVisitor):
         self.count = 0
 
     fn visit[T: DataType](mut self, array: PrimitiveArray[T]) raises:
-        self.count += array.null_count() * -1 + array.data.length
+        self.count += array.null_count() * -1 + array.length
 
     fn visit(mut self, array: StringArray) raises:
-        self.count += array.data.length
+        self.count += array.length
 
     fn visit(mut self, array: ListArray) raises:
-        self.count += array.data.length
+        self.count += array.length
 
     fn visit(mut self, array: StructArray) raises:
-        self.count += array.data.length
+        self.count += array.length
 
 
 def test_custom_visitor():
