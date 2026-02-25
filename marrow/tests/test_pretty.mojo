@@ -4,7 +4,6 @@ from marrow.arrays import *
 from marrow.dtypes import *
 from marrow.pretty import ArrayPrinter
 from marrow.test_fixtures.arrays import (
-    build_array_data,
     build_list_of_int,
     build_list_of_list,
     build_struct,
@@ -107,8 +106,8 @@ def test_format_empty_struct():
 
 
 def test_format_chunked():
-    var first = build_array_data(2, 0)
-    var second = build_array_data(3, 0)
+    var first = array[uint8]([0, 1])
+    var second = array[uint8]([0, 1, 2])
     var chunks = List[Array]()
     chunks.append(first^)
     chunks.append(second^)

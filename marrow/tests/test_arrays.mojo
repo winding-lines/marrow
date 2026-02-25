@@ -5,7 +5,6 @@ from marrow.dtypes import *
 from marrow.buffers import Buffer, Bitmap
 from marrow.compute.filter import drop_nulls
 from marrow.test_fixtures.arrays import (
-    build_array_data,
     assert_bitmap_set,
     build_list_of_list,
     build_struct,
@@ -174,17 +173,15 @@ def test_append():
     assert_true(a.capacity >= len(a))
 
 
+def test_array_empty():
+    var a = array[int32]()
+    assert_equal(len(a), 0)
+
+
 def test_array_from_ints():
     var g = array[int8]([1, 2])
     assert_equal(len(g), 2)
     assert_equal(materialize[g.dtype](), materialize[int8]())
-    assert_equal(g.unsafe_get(0), 1)
-    assert_equal(g.unsafe_get(1), 2)
-
-
-def test_array_from_list_overload():
-    var g = array[int8]([1, 2])
-    assert_equal(len(g), 2)
     assert_equal(g.unsafe_get(0), 1)
     assert_equal(g.unsafe_get(1), 2)
 
@@ -193,6 +190,23 @@ def test_array_from_list_overload():
     assert_equal(b.unsafe_get(0), BoolArray.scalar(True))
     assert_equal(b.unsafe_get(1), BoolArray.scalar(False))
     assert_equal(b.unsafe_get(2), BoolArray.scalar(True))
+
+
+def test_array_with_nulls():
+    var a = array[int32]([1, None, 3])
+    assert_equal(len(a), 3)
+    assert_equal(a.null_count(), 1)
+    assert_true(a.is_valid(0))
+    assert_false(a.is_valid(1))
+    assert_true(a.is_valid(2))
+    assert_equal(a.unsafe_get(0), 1)
+    assert_equal(a.unsafe_get(2), 3)
+
+    var b = array([True, None, False])
+    assert_equal(len(b), 3)
+    assert_true(b.is_valid(0))
+    assert_false(b.is_valid(1))
+    assert_true(b.is_valid(2))
 
 
 def test_arange():
@@ -244,9 +258,7 @@ def test_drop_null() -> None:
     """Test the drop null function via the compute module."""
     from marrow.compute.filter import drop_nulls
 
-    var array_data = build_array_data(10, 5)
-
-    var primitive_array = PrimitiveArray[uint8](array_data^)
+    var primitive_array = array[uint8]([None, 1, None, 3, None, 5, None, 7, None, 9])
     # Check the setup.
     assert_equal(primitive_array.null_count(), 5)
     assert_bitmap_set(primitive_array.bitmap[], [1, 3, 5, 7, 9], "check setup")
@@ -464,12 +476,9 @@ def test_struct_array_unsafe_get():
 
 
 def test_chunked_array():
-    var first_array_data = build_array_data(1, 0)
     var arrays = List[Array]()
-    arrays.append(first_array_data^)
-
-    var second_array_data = build_array_data(2, 0)
-    arrays.append(second_array_data^)
+    arrays.append(array[uint8]([0]))
+    arrays.append(array[uint8]([0, 1]))
 
     var chunked_array = ChunkedArray(materialize[int8](), arrays^)
     assert_equal(chunked_array.length, 3)
@@ -482,12 +491,9 @@ def test_chunked_array():
 
 
 def test_combine_chunked_array():
-    var first_array_data = build_array_data(1, 0)
     var arrays = List[Array]()
-    arrays.append(first_array_data^)
-
-    var second_array_data = build_array_data(2, 0)
-    arrays.append(second_array_data^)
+    arrays.append(array[uint8]([0]))
+    arrays.append(array[uint8]([0, 1]))
 
     var chunked_array = ChunkedArray(materialize[int8](), arrays^)
     assert_equal(chunked_array.length, 3)

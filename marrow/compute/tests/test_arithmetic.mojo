@@ -57,8 +57,8 @@ def test_add_untyped():
 
 
 def test_add_empty():
-    var a = array[int32]([])
-    var b = array[int32]([])
+    var a = array[int32]()
+    var b = array[int32]()
     var result = add[int32](a, b)
     assert_equal(len(result), 0)
 

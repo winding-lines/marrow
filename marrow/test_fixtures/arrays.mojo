@@ -10,34 +10,6 @@ from testing import assert_equal
 from reflection import call_location
 
 
-def build_array_data(length: Int, nulls: Int) -> Array:
-    """Builds an Array object with nulls.
-
-    Args:
-        length: The length of the array.
-        nulls: The number of nulls to set.
-    """
-    var bitmap = Bitmap.alloc(length)
-    var buffer = Buffer.alloc[DType.uint8](length)
-    for i in range(length):
-        buffer.unsafe_set(i, UInt8(i % 256))
-        # Check to see if the current index should be valid or null.
-        var is_valid = True
-        if nulls > 0:
-            if i % (Int(length / nulls)) == 0:
-                is_valid = False
-        bitmap.unsafe_set(i, is_valid)
-
-    var buffers = [ArcPointer(buffer^)]
-    return Array(
-        dtype=materialize[uint8](),
-        length=length,
-        bitmap=ArcPointer(bitmap^),
-        buffers=buffers^,
-        children=[],
-        offset=0,
-    )
-
 
 @always_inline
 def assert_bitmap_set(

@@ -29,7 +29,7 @@ def test_sum_all_nulls():
 
 
 def test_sum_empty():
-    var a = array[int32]([])
+    var a = array[int32]()
     var result = sum[int32](a)
     assert_equal(result, 0)
 

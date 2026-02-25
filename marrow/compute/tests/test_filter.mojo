@@ -3,7 +3,6 @@ from testing import assert_equal, assert_true, TestSuite
 from marrow.arrays import array, Array, Int32Array, Int64Array, PrimitiveArray
 from marrow.dtypes import int32, int64, uint8
 from marrow.compute.filter import drop_nulls
-from marrow.test_fixtures.arrays import build_array_data, assert_bitmap_set
 
 
 def test_drop_nulls_typed():
@@ -40,24 +39,20 @@ def test_drop_nulls_all_nulls():
 
 
 def test_drop_nulls_empty():
-    var a = array[int32]([])
+    var a = array[int32]()
     var result = drop_nulls[int32](a)
     assert_equal(len(result), 0)
 
 
 def test_drop_nulls_untyped():
-    """Test with the existing test fixture (uint8 array with 5 nulls out of 10).
-    """
-    var array_data = build_array_data(10, 5)
-    var result = drop_nulls(array_data)
+    var result = drop_nulls(array[uint8]([None, 1, None, 3, None, 5, None, 7, None, 9]))
     assert_equal(result.length, 5)
 
 
 def test_drop_nulls_matches_old_behavior():
     """Verify that new drop_nulls produces same results as old in-place version.
     """
-    var array_data = build_array_data(10, 5)
-    var primitive = PrimitiveArray[uint8](array_data^)
+    var primitive = array[uint8]([None, 1, None, 3, None, 5, None, 7, None, 9])
     var result = drop_nulls[uint8](primitive)
     assert_equal(len(result), 5)
     # The fixture sets values to i % 256, with odd indices valid

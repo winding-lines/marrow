@@ -220,6 +220,11 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
         self.unsafe_set(self.length, value)
         self.length += 1
 
+    @always_inline
+    fn unsafe_append_null(mut self):
+        self.bitmap[].unsafe_set(self.length + self.offset, False)
+        self.length += 1
+
     @staticmethod
     fn nulls(size: Int) raises -> PrimitiveArray[Self.T]:
         """Creates a new PrimitiveArray filled with null values."""
@@ -556,30 +561,36 @@ struct ChunkedArray(Stringable):
         return combined^
 
 
-fn array[T: DataType](values: List[Scalar[T.native]]) -> PrimitiveArray[T]:
-    """Create a primitive array from a list of values."""
+fn array[T: DataType]() -> PrimitiveArray[T]:
+    """Create an empty primitive array."""
+    return PrimitiveArray[T]()
+
+
+fn array[T: DataType](values: List[Optional[Int]]) -> PrimitiveArray[T]:
+    """Create a primitive array from a list of values, where None becomes null."""
     var a = PrimitiveArray[T](len(values))
     for value in values:
-        a.unsafe_append(value)
+        if value:
+            a.unsafe_append(Scalar[T.native](value.value()))
+        else:
+            a.unsafe_append_null()
     return a^
 
 
-# TODO(stdlib): Bool literals (True/False) cannot be implicitly converted to
-# Scalar[DType.bool] in list literals, unlike integer literals which coerce
-# freely to any Scalar[DType.int*]. A dedicated overload is required until
-# Mojo supports this implicit coercion.
-# Upstream issue candidate: https://github.com/modular/modular
-fn array(values: List[Bool]) -> BoolArray:
-    """Create a bool array from a list of values."""
+# TODO(stdlib): Bool literals (True/False) coerce to Optional[Bool], so a
+# single Optional overload covers both nullable and non-nullable bool arrays.
+fn array(values: List[Optional[Bool]]) -> BoolArray:
+    """Create a bool array from a list of values, where None becomes null."""
     var a = BoolArray(len(values))
     for value in values:
-        a.unsafe_append(BoolArray.scalar(value))
+        if value:
+            a.unsafe_append(BoolArray.scalar(value.value()))
+        else:
+            a.unsafe_append_null()
     return a^
 
 
-fn arange[
-    T: DataType
-](start: Scalar[T.native], end: Scalar[T.native]) -> PrimitiveArray[T]:
+fn arange[T: DataType](start: Int, end: Int) -> PrimitiveArray[T]:
     """Create an integer array from start to end (exclusive), similar to numpy.arange.
 
     Parameters:
@@ -592,11 +603,8 @@ fn arange[
     Returns:
         A PrimitiveArray[T] with values [start, start+1, ..., end-1].
     """
-    comptime assert T.is_integer(), "range() only supports integer DataTypes"
-    var length = Int(end - start)
-    var a = PrimitiveArray[T](length)
-    var i = start
-    while i < end:
-        a.unsafe_append(i)
-        i += 1
+    comptime assert T.is_integer(), "arange() only supports integer DataTypes"
+    var a = PrimitiveArray[T](end - start)
+    for i in range(start, end):
+        a.unsafe_append(Scalar[T.native](i))
     return a^
