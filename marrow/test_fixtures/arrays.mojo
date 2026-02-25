@@ -68,7 +68,9 @@ fn build_list_of_int[data_type: DataType]() raises -> ListArray:
     bitmap.unsafe_range_set(0, 10, True)
     var buffer = ArcPointer(Buffer.alloc[data_type.native](10))
     for i in range(10):
-        buffer[].unsafe_set[data_type.native](i, Scalar[data_type.native](i + 1))
+        buffer[].unsafe_set[data_type.native](
+            i, Scalar[data_type.native](i + 1)
+        )
 
     var value_data = Array(
         dtype=materialize[data_type](),
@@ -109,7 +111,9 @@ fn build_list_of_list[data_type: DataType]() raises -> ListArray:
     bitmap[].unsafe_range_set(0, 10, True)
     var buffer = ArcPointer(Buffer.alloc[data_type.native](10))
     for i in range(10):
-        buffer[].unsafe_set[data_type.native](i, Scalar[data_type.native](i + 1))
+        buffer[].unsafe_set[data_type.native](
+            i, Scalar[data_type.native](i + 1)
+        )
 
     var value_data = Array(
         dtype=materialize[data_type](),

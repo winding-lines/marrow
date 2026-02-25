@@ -11,7 +11,7 @@ from marrow.dtypes import DataType
 fn unary[
     InT: DataType,
     OutT: DataType,
-    func: fn (Scalar[InT.native]) -> Scalar[OutT.native],
+    func: fn(Scalar[InT.native]) -> Scalar[OutT.native],
 ](array: PrimitiveArray[InT]) -> PrimitiveArray[OutT]:
     """Apply a scalar function element-wise to produce a new array.
 
@@ -41,8 +41,10 @@ fn binary[
     LT: DataType,
     RT: DataType,
     OutT: DataType,
-    func: fn (Scalar[LT.native], Scalar[RT.native]) -> Scalar[OutT.native],
-](left: PrimitiveArray[LT], right: PrimitiveArray[RT]) raises -> PrimitiveArray[OutT]:
+    func: fn(Scalar[LT.native], Scalar[RT.native]) -> Scalar[OutT.native],
+](left: PrimitiveArray[LT], right: PrimitiveArray[RT]) raises -> PrimitiveArray[
+    OutT
+]:
     """Apply a binary scalar function element-wise to two arrays.
 
     Both arrays must have the same length. Output has the same length.
@@ -63,9 +65,8 @@ fn binary[
     """
     if len(left) != len(right):
         raise Error(
-            "binary kernel: arrays must have the same length, got {} and {}".format(
-                len(left), len(right)
-            )
+            "binary kernel: arrays must have the same length, got {} and {}"
+            .format(len(left), len(right))
         )
     var length = len(left)
     var result = PrimitiveArray[OutT](length)
@@ -79,8 +80,10 @@ fn binary[
 fn reduce[
     T: DataType,
     AccT: DataType,
-    func: fn (Scalar[AccT.native], Scalar[T.native]) -> Scalar[AccT.native],
-](array: PrimitiveArray[T], initial: Scalar[AccT.native]) -> Scalar[AccT.native]:
+    func: fn(Scalar[AccT.native], Scalar[T.native]) -> Scalar[AccT.native],
+](array: PrimitiveArray[T], initial: Scalar[AccT.native]) -> Scalar[
+    AccT.native
+]:
     """Reduce an array to a scalar value, skipping nulls.
 
     Parameters:

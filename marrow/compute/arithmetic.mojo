@@ -9,9 +9,11 @@ fn _add[T: DType](a: Scalar[T], b: Scalar[T]) -> Scalar[T]:
     return a + b
 
 
-fn add[T: DataType](
-    left: PrimitiveArray[T], right: PrimitiveArray[T]
-) raises -> PrimitiveArray[T]:
+fn add[
+    T: DataType
+](left: PrimitiveArray[T], right: PrimitiveArray[T]) raises -> PrimitiveArray[
+    T
+]:
     """Element-wise addition of two primitive arrays of the same type.
 
     Args:
@@ -37,7 +39,10 @@ fn add(left: Array, right: Array) raises -> Array:
     """
     if left.dtype != right.dtype:
         raise Error(
-            "add: dtype mismatch: " + String(left.dtype) + " vs " + String(right.dtype)
+            "add: dtype mismatch: "
+            + String(left.dtype)
+            + " vs "
+            + String(right.dtype)
         )
 
     @parameter

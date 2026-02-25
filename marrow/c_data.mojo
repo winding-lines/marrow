@@ -303,9 +303,9 @@ struct CArrowArrayStream(Copyable, TrivialRegisterPassable):
         UnsafePointer[CArrowArrayStream, MutAnyOrigin],
         UnsafePointer[CArrowArray, MutAnyOrigin],
     ) -> Int32
-    var get_last_error: fn(UnsafePointer[CArrowArrayStream, MutAnyOrigin]) -> UnsafePointer[
-        UInt8, MutAnyOrigin
-    ]
+    var get_last_error: fn(
+        UnsafePointer[CArrowArrayStream, MutAnyOrigin]
+    ) -> UnsafePointer[UInt8, MutAnyOrigin]
     var release: fn(UnsafePointer[CArrowArrayStream, MutAnyOrigin]) -> None
     var private_data: OpaquePointer[MutAnyOrigin]
 

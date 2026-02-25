@@ -46,14 +46,16 @@ def test_drop_nulls_empty():
 
 
 def test_drop_nulls_untyped():
-    """Test with the existing test fixture (uint8 array with 5 nulls out of 10)."""
+    """Test with the existing test fixture (uint8 array with 5 nulls out of 10).
+    """
     var array_data = build_array_data(10, 5)
     var result = drop_nulls(array_data)
     assert_equal(result.length, 5)
 
 
 def test_drop_nulls_matches_old_behavior():
-    """Verify that new drop_nulls produces same results as old in-place version."""
+    """Verify that new drop_nulls produces same results as old in-place version.
+    """
     var array_data = build_array_data(10, 5)
     var primitive = PrimitiveArray[uint8](array_data^)
     var result = drop_nulls[uint8](primitive)

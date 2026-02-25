@@ -376,9 +376,7 @@ def test_list_int_array():
     assert_equal(lists.dtype, list_(materialize[int64]()))
 
     var first_value = lists.unsafe_get(0)
-    assert_equal(
-        first_value.__str__(), "PrimitiveArray[int64]([1, 2, 3])"
-    )
+    assert_equal(first_value.__str__(), "PrimitiveArray[int64]([1, 2, 3])")
 
     assert_equal(len(lists), 1)
 

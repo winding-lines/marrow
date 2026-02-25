@@ -20,9 +20,7 @@ def test_list_type():
 
 def test_field():
     var field = dt.Field("a", materialize[dt.int64](), False)
-    var expected = (
-        'Field(name=a, dtype=int64, nullable=False)'
-    )
+    var expected = "Field(name=a, dtype=int64, nullable=False)"
     assert_equal(String(field), expected)
     assert_equal(field.__repr__(), expected)
 

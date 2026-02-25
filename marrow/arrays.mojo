@@ -280,7 +280,9 @@ struct StringArray(Movable, Sized):
     fn __init__(out self, ref data: Array) raises:
         if data.dtype != materialize[string]():
             raise Error(
-                "Unexpected dtype '" + String(data.dtype) + "' instead of 'string'."
+                "Unexpected dtype '"
+                + String(data.dtype)
+                + "' instead of 'string'."
             )
         elif len(data.buffers) != 2:
             raise Error("StringArray requires exactly two buffers")
@@ -575,7 +577,9 @@ fn array(values: List[Bool]) -> BoolArray:
     return a^
 
 
-fn arange[T: DataType](start: Scalar[T.native], end: Scalar[T.native]) -> PrimitiveArray[T]:
+fn arange[
+    T: DataType
+](start: Scalar[T.native], end: Scalar[T.native]) -> PrimitiveArray[T]:
     """Create an integer array from start to end (exclusive), similar to numpy.arange.
 
     Parameters:
@@ -596,4 +600,3 @@ fn arange[T: DataType](start: Scalar[T.native], end: Scalar[T.native]) -> Primit
         a.unsafe_append(i)
         i += 1
     return a^
-
