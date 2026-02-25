@@ -33,20 +33,40 @@ struct Array(Copyable, Movable, Stringable):
         )
 
     @implicit
-    fn __init__[T: DataType](out self, var value: PrimitiveArray[T]):
-        self = value.data.copy()
+    fn __init__[T: DataType](out self, array: PrimitiveArray[T]):
+        self.dtype = materialize[T]()
+        self.length = array.length
+        self.offset = array.offset
+        self.bitmap = array.bitmap
+        self.buffers = [array.buffer]
+        self.children = []
 
     @implicit
-    fn __init__(out self, var value: StringArray):
-        self = value.data.copy()
+    fn __init__(out self, array: StringArray):
+        self.dtype = materialize[string]()
+        self.length = array.length
+        self.offset = array.offset
+        self.bitmap = array.bitmap
+        self.buffers = [array.offsets, array.values]
+        self.children = []
 
     @implicit
-    fn __init__(out self, var value: ListArray):
-        self = value.data.copy()
+    fn __init__(out self, array: ListArray):
+        self.dtype = array.dtype.copy()
+        self.length = array.length
+        self.offset = array.offset
+        self.bitmap = array.bitmap
+        self.buffers = [array.offsets]
+        self.children = [array.values]
 
     @implicit
-    fn __init__(out self, var value: StructArray):
-        self = value.data.copy()
+    fn __init__(out self, array: StructArray):
+        self.dtype = array.dtype.copy()
+        self.length = array.length
+        self.offset = 0
+        self.bitmap = array.bitmap
+        self.buffers = []
+        self.children = array.children.copy()
 
     fn __init__(out self, *, copy: Self):
         self.dtype = copy.dtype.copy()
@@ -77,47 +97,47 @@ struct Array(Copyable, Movable, Stringable):
             pass
         return printer^.finish()
 
-    fn as_primitive[T: DataType](var self) raises -> PrimitiveArray[T]:
-        return PrimitiveArray[T](self^)
+    fn as_primitive[T: DataType](self) raises -> PrimitiveArray[T]:
+        return PrimitiveArray[T](self)
 
-    fn as_int8(var self) raises -> Int8Array:
-        return Int8Array(self^)
+    fn as_int8(self) raises -> Int8Array:
+        return Int8Array(self)
 
-    fn as_int16(var self) raises -> Int16Array:
-        return Int16Array(self^)
+    fn as_int16(self) raises -> Int16Array:
+        return Int16Array(self)
 
-    fn as_int32(var self) raises -> Int32Array:
-        return Int32Array(self^)
+    fn as_int32(self) raises -> Int32Array:
+        return Int32Array(self)
 
-    fn as_int64(var self) raises -> Int64Array:
-        return Int64Array(self^)
+    fn as_int64(self) raises -> Int64Array:
+        return Int64Array(self)
 
-    fn as_uint8(var self) raises -> UInt8Array:
-        return UInt8Array(self^)
+    fn as_uint8(self) raises -> UInt8Array:
+        return UInt8Array(self)
 
-    fn as_uint16(var self) raises -> UInt16Array:
-        return UInt16Array(self^)
+    fn as_uint16(self) raises -> UInt16Array:
+        return UInt16Array(self)
 
-    fn as_uint32(var self) raises -> UInt32Array:
-        return UInt32Array(self^)
+    fn as_uint32(self) raises -> UInt32Array:
+        return UInt32Array(self)
 
-    fn as_uint64(var self) raises -> UInt64Array:
-        return UInt64Array(self^)
+    fn as_uint64(self) raises -> UInt64Array:
+        return UInt64Array(self)
 
-    fn as_float32(var self) raises -> Float32Array:
-        return Float32Array(self^)
+    fn as_float32(self) raises -> Float32Array:
+        return Float32Array(self)
 
-    fn as_float64(var self) raises -> Float64Array:
-        return Float64Array(self^)
+    fn as_float64(self) raises -> Float64Array:
+        return Float64Array(self)
 
-    fn as_string(var self) raises -> StringArray:
-        return StringArray(self^)
+    fn as_string(self) raises -> StringArray:
+        return StringArray(self)
 
-    fn as_list(var self) raises -> ListArray:
-        return ListArray(self^)
+    fn as_list(self) raises -> ListArray:
+        return ListArray(self)
 
-    fn as_struct(var self) raises -> StructArray:
-        return StructArray(data=self^)
+    fn as_struct(self) raises -> StructArray:
+        return StructArray(data=self)
 
     fn append_to_array(
         deinit self: Array, mut combined: Array, start: Int
@@ -199,13 +219,13 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
 
     comptime dtype = Self.T
     comptime scalar = Scalar[Self.T.native]
-    var data: Array
+    var length: Int
     var offset: Int
     var capacity: Int
     var bitmap: ArcPointer[Bitmap]
     var buffer: ArcPointer[Buffer]
 
-    fn __init__(out self, var data: Array, offset: Int = 0) raises:
+    fn __init__(out self, ref data: Array, offset: Int = 0) raises:
         # TODO(kszucs): put a dtype constraint here
         if data.dtype != materialize[Self.T]():
             raise Error(
@@ -217,24 +237,17 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
             raise Error("PrimitiveArray requires exactly one buffer")
 
         self.offset = data.offset + offset
+        self.length = data.length
         self.capacity = data.length
         self.bitmap = data.bitmap
         self.buffer = data.buffers[0]
-        self.data = data^
 
     fn __init__(out self, capacity: Int = 0, offset: Int = 0):
         self.capacity = capacity
+        self.length = 0
         self.offset = offset
         self.bitmap = ArcPointer(Bitmap.alloc(capacity))
         self.buffer = ArcPointer(Buffer.alloc[Self.T.native](capacity))
-        self.data = Array(
-            dtype=materialize[Self.T](),
-            length=0,
-            bitmap=self.bitmap,
-            buffers=[self.buffer],
-            children=[],
-            offset=self.offset,
-        )
 
     fn grow(mut self, capacity: Int):
         self.bitmap[].grow(capacity)
@@ -243,7 +256,7 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
 
     @always_inline
     fn __len__(self) -> Int:
-        return self.data.length
+        return self.length
 
     @always_inline
     fn is_valid(self, index: Int) -> Bool:
@@ -260,8 +273,8 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
 
     @always_inline
     fn unsafe_append(mut self, value: Self.scalar):
-        self.unsafe_set(self.data.length, value)
-        self.data.length += 1
+        self.unsafe_set(self.length, value)
+        self.length += 1
 
     @staticmethod
     fn nulls(size: Int) raises -> PrimitiveArray[Self.T]:
@@ -281,8 +294,8 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
         )
 
     fn append(mut self, value: Self.scalar):
-        if self.data.length >= self.capacity:
-            self.grow(max(self.capacity * 2, self.data.length + 1))
+        if self.length >= self.capacity:
+            self.grow(max(self.capacity * 2, self.length + 1))
         self.unsafe_append(value)
 
     # fn append(mut self, value: Optional[Self.scalar]):
@@ -298,15 +311,13 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
 
         Currently we drop nulls from individual buffers, we do not delete buffers.
         """
-        drop_nulls[dtype](
-            self.data.buffers[0], self.data.bitmap, 0, self.data.length
-        )
-        self.data.length = self.bitmap[].buffer.bit_count()
+        drop_nulls[dtype](self.buffer, self.bitmap, 0, self.length)
+        self.length = self.bitmap[].buffer.bit_count()
 
     fn null_count(self) -> Int:
         """Returns the number of null values in the array."""
         var valid_count = self.bitmap[].buffer.bit_count()
-        return self.data.length - valid_count
+        return self.length - valid_count
 
 
 comptime BoolArray = PrimitiveArray[bool_]
@@ -323,13 +334,14 @@ comptime Float64Array = PrimitiveArray[float64]
 
 
 struct StringArray(Movable, Sized):
-    var data: Array
+    var length: Int
+    var offset: Int
     var capacity: Int
     var bitmap: ArcPointer[Bitmap]
     var offsets: ArcPointer[Buffer]
     var values: ArcPointer[Buffer]
 
-    fn __init__(out self, var data: Array) raises:
+    fn __init__(out self, ref data: Array) raises:
         if data.dtype != materialize[string]():
             raise Error(
                 "Unexpected dtype '{}' instead of 'string'.".format(data.dtype)
@@ -337,30 +349,25 @@ struct StringArray(Movable, Sized):
         elif len(data.buffers) != 2:
             raise Error("StringArray requires exactly two buffers")
 
+        self.length = data.length
+        self.offset = data.offset
         self.capacity = data.length
         self.bitmap = data.bitmap
         self.offsets = data.buffers[0]
         self.values = data.buffers[1]
-        self.data = data^
 
     fn __init__(out self, capacity: Int = 0):
         # TODO(kszucs): initial values capacity should be either 0 or some value received from the user
         self.capacity = capacity
+        self.length = 0
+        self.offset = 0
         self.bitmap = ArcPointer(Bitmap.alloc(capacity))
         self.offsets = ArcPointer(Buffer.alloc[DType.uint32](capacity + 1))
         self.values = ArcPointer(Buffer.alloc[DType.uint8](capacity))
         self.offsets[].unsafe_set[DType.uint32](0, 0)
-        self.data = Array(
-            dtype=materialize[string](),
-            length=0,
-            bitmap=self.bitmap,
-            buffers=[self.offsets, self.values],
-            children=[],
-            offset=0,
-        )
 
     fn __len__(self) -> Int:
-        return self.data.length
+        return self.length
 
     fn grow(mut self, capacity: Int):
         self.bitmap[].grow(capacity)
@@ -374,10 +381,10 @@ struct StringArray(Movable, Sized):
 
     fn unsafe_append(mut self, value: String):
         # todo(kszucs): use unsafe set
-        var index = self.data.length
+        var index = self.length
         var last_offset = self.offsets[].unsafe_get[DType.uint32](index)
         var next_offset = last_offset + len(value)
-        self.data.length += 1
+        self.length += 1
         self.bitmap[].unsafe_set(index, True)
         self.offsets[].unsafe_set[DType.uint32](index + 1, next_offset)
         self.values[].grow[DType.uint8](next_offset)
@@ -386,7 +393,7 @@ struct StringArray(Movable, Sized):
         memcpy(dest=dst_address, src=src_address, count=len(value))
 
     fn unsafe_get(self, index: UInt) -> StringSlice[ImmutAnyOrigin]:
-        var offset_idx = Int(index) + self.data.offset
+        var offset_idx = Int(index) + self.offset
         var start_offset = self.offsets[].unsafe_get[DType.uint32](offset_idx)
         var end_offset = self.offsets[].unsafe_get[DType.uint32](offset_idx + 1)
         var address = self.values[].get_ptr_at(Int(start_offset))
@@ -414,13 +421,15 @@ struct StringArray(Movable, Sized):
 
 
 struct ListArray(Movable, Sized):
-    var data: Array
+    var dtype: DataType
+    var length: Int
+    var offset: Int
     var capacity: Int
     var bitmap: ArcPointer[Bitmap]
     var offsets: ArcPointer[Buffer]
     var values: ArcPointer[Array]
 
-    fn __init__(out self, var data: Array) raises:
+    fn __init__(out self, ref data: Array) raises:
         if not data.dtype.is_list():
             raise Error(
                 "Unexpected dtype {} instead of 'list'".format(data.dtype)
@@ -430,11 +439,13 @@ struct ListArray(Movable, Sized):
         elif len(data.children) != 1:
             raise Error("ListArray requires exactly one child array")
 
+        self.dtype = data.dtype.copy()
+        self.length = data.length
+        self.offset = data.offset
         self.capacity = data.length
         self.bitmap = data.bitmap
         self.offsets = data.buffers[0]
         self.values = data.children[0]
-        self.data = data^
 
     @staticmethod
     fn from_values(var values: Array, capacity: Int = 1) raises -> ListArray:
@@ -446,7 +457,6 @@ struct ListArray(Movable, Sized):
             values: Array to use as the first element in the ListArray.
             capacity: The capacity of the ListArray.
         """
-        var list_dtype = list_(values.dtype.copy())
         var length = values.length
 
         var bitmap = Bitmap.alloc(capacity)
@@ -455,6 +465,7 @@ struct ListArray(Movable, Sized):
         offsets.unsafe_set[DType.uint32](0, 0)
         offsets.unsafe_set[DType.uint32](1, length)
 
+        var list_dtype = list_(values.dtype.copy())
         var data = Array(
             dtype=list_dtype^,
             length=1,
@@ -466,17 +477,17 @@ struct ListArray(Movable, Sized):
         return ListArray(data^)
 
     fn __len__(self) -> Int:
-        return self.data.length
+        return self.length
 
     fn is_valid(self, index: Int) -> Bool:
         return self.bitmap[].unsafe_get(index)
 
     fn unsafe_append(mut self, is_valid: Bool):
-        self.bitmap[].unsafe_set(self.data.length, is_valid)
+        self.bitmap[].unsafe_set(self.length, is_valid)
         self.offsets[].unsafe_set[DType.uint32](
-            self.data.length + 1, self.values[].length
+            self.length + 1, self.values[].length
         )
-        self.data.length += 1
+        self.length += 1
 
     fn unsafe_get(self, index: Int, out array_data: Array) raises:
         """Access the value at a given index in the list array.
@@ -484,12 +495,12 @@ struct ListArray(Movable, Sized):
         Use an out argument to allow the caller to re-use memory while iterating over a pyarrow structure.
         """
         var start = Int(
-            self.offsets[].unsafe_get[DType.int32](self.data.offset + index)
+            self.offsets[].unsafe_get[DType.int32](self.offset + index)
         )
         var end = Int(
-            self.offsets[].unsafe_get[DType.int32](self.data.offset + index + 1)
+            self.offsets[].unsafe_get[DType.int32](self.offset + index + 1)
         )
-        ref first_child = self.data.children[0][]
+        ref first_child = self.values[]
         return Array(
             dtype=first_child.dtype.copy(),
             bitmap=first_child.bitmap,
@@ -501,9 +512,11 @@ struct ListArray(Movable, Sized):
 
 
 struct StructArray(Movable, Sized):
-    var data: Array
-    var fields: List[Field]
+    var dtype: DataType
+    var length: Int
     var capacity: Int
+    var bitmap: ArcPointer[Bitmap]
+    var children: List[ArcPointer[Array]]
 
     fn __init__(
         out self,
@@ -513,29 +526,24 @@ struct StructArray(Movable, Sized):
         var bitmap = Bitmap.alloc(capacity)
         bitmap.unsafe_range_set(0, capacity, True)
 
-        var struct_dtype = struct_(fields)
-
+        self.dtype = struct_(fields)
         self.capacity = capacity
-        self.fields = fields^
-        self.data = Array(
-            dtype=struct_dtype^,
-            length=0,
-            bitmap=ArcPointer(bitmap^),
-            buffers=[],
-            children=[],
-            offset=0,
-        )
+        self.length = 0
+        self.bitmap = ArcPointer(bitmap^)
+        self.children = []
 
-    fn __init__(out self, *, var data: Array):
-        self.fields = data.dtype.fields.copy()
+    fn __init__(out self, *, ref data: Array):
+        self.dtype = data.dtype.copy()
+        self.length = data.length
         self.capacity = data.length
-        self.data = data^
+        self.bitmap = data.bitmap
+        self.children = data.children.copy()
 
     fn __len__(self) -> Int:
-        return self.data.length
+        return self.length
 
     fn _index_for_field_name(self, name: StringSlice) raises -> Int:
-        for idx, ref field in enumerate(self.data.dtype.fields):
+        for idx, ref field in enumerate(self.dtype.fields):
             if field.name == name:
                 return idx
 
@@ -543,9 +551,9 @@ struct StructArray(Movable, Sized):
 
     fn unsafe_get(
         self, name: StringSlice
-    ) raises -> ref[self.data.children[0]] Array:
+    ) raises -> ref[self.children[0]] Array:
         """Access the field with the given name in the struct."""
-        return self.data.children[self._index_for_field_name(name)][]
+        return self.children[self._index_for_field_name(name)][]
 
 
 struct ChunkedArray(Stringable):
