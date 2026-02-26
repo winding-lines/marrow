@@ -203,16 +203,14 @@ def test_buffer_with_offset():
     buf.unsafe_set(0, 42)
     buf.unsafe_set(1, 43)
     buf.unsafe_set(2, 44)
+    buf.unsafe_set(3, 55)
 
-    # Create buffer with offset
-    var buf_with_offset = Buffer(buf.ptr, buf.size, buf.owns, offset=2)
-    assert_equal(buf_with_offset.offset, 2)
-
-    # Test that offset affects get operations
-    assert_equal(buf_with_offset.unsafe_get(0), 44)  # Should get buf[2]
-
-    # Test that offset affects set operations
-    buf_with_offset.unsafe_set(1, 99)  # Should set buf[3]
+    # Shift the offset and test that get/set are adjusted
+    buf.offset = 2
+    assert_equal(buf.offset, 2)
+    assert_equal(buf.unsafe_get(0), 44)  # reads buf[2]
+    buf.unsafe_set(1, 99)  # writes buf[3]
+    buf.offset = 0
     assert_equal(buf.unsafe_get(3), 99)
 
 
@@ -249,24 +247,23 @@ def test_buffer_swap_with_offset():
 
 
 def test_bitmap_with_offset():
-    # Populate a Bitmap with known bits
+    # Populate a Bitmap with known bits then test offset arithmetic in place.
     var bm = Bitmap.alloc(16)
     bm.unsafe_set(3, True)
     bm.unsafe_set(5, True)
     bm.unsafe_set(6, True)
 
-    # Create a non-owning view of the same raw bytes with offset=3
-    var view = Bitmap(Buffer(bm.buffer.ptr, bm.buffer.size, False), offset=3)
-    assert_equal(view.offset, 3)
+    # Apply an offset directly and verify reads are shifted.
+    bm.offset = 3
+    assert_equal(bm.offset, 3)
+    assert_true(bm.unsafe_get(0))  # bit 3
+    assert_false(bm.unsafe_get(1))  # bit 4
+    assert_true(bm.unsafe_get(2))  # bit 5
+    assert_true(bm.unsafe_get(3))  # bit 6
 
-    # Reads through view are shifted by 3
-    assert_true(view.unsafe_get(0))  # bit 3
-    assert_false(view.unsafe_get(1))  # bit 4
-    assert_true(view.unsafe_get(2))  # bit 5
-    assert_true(view.unsafe_get(3))  # bit 6
-
-    # Write through view sets the correct underlying bit
-    view.unsafe_set(4, True)  # sets bit 7
+    # Writes are also shifted by the offset.
+    bm.unsafe_set(4, True)  # should set bit 7
+    bm.offset = 0
     assert_true(bm.unsafe_get(7))
 
 

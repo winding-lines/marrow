@@ -505,7 +505,7 @@ def test_combine_chunked_array():
 
 
 def test_primitive_freeze_zero_copy():
-    """freeze() on an exact-size array moves ArcPointers without allocation."""
+    """Freeze() on an exact-size array moves ArcPointers without allocation."""
     var a = Int64Array(capacity=3)
     a.unsafe_append(10)
     a.unsafe_append(20)
@@ -520,7 +520,7 @@ def test_primitive_freeze_zero_copy():
 
 
 def test_primitive_freeze_shrinks():
-    """freeze() on an over-allocated array trims capacity to length."""
+    """Freeze() on an over-allocated array trims capacity to length."""
     var a = Int64Array(capacity=100)
     a.unsafe_append(42)
     a.unsafe_append(99)
@@ -532,7 +532,7 @@ def test_primitive_freeze_shrinks():
 
 
 def test_primitive_freeze_via_append():
-    """freeze() works on an array built with append() (auto-grow capacity)."""
+    """Freeze() works on an array built with append() (auto-grow capacity)."""
     var a = Int64Array()
     a.append(1)
     a.append(2)
@@ -545,7 +545,7 @@ def test_primitive_freeze_via_append():
 
 
 def test_primitive_freeze_preserves_nulls():
-    """freeze() preserves null validity information."""
+    """Freeze() preserves null validity information."""
     var a = Int64Array(capacity=3)
     a.unsafe_append(1)
     a.unsafe_append_null()
@@ -569,7 +569,7 @@ def test_primitive_freeze_converts_to_array():
 
 
 def test_primitive_freeze_with_offset():
-    """freeze() with non-zero offset normalizes the data (offset becomes 0)."""
+    """Freeze() with non-zero offset normalizes the data (offset becomes 0)."""
     var a = Int64Array(capacity=5)
     a.unsafe_append(0)
     a.unsafe_append(10)
@@ -626,7 +626,7 @@ def test_setitem_bounds_check():
 
 
 def test_string_freeze_zero_copy():
-    """freeze() on an exact-size StringArray moves ArcPointers."""
+    """Freeze() on an exact-size StringArray moves ArcPointers."""
     var s = StringArray(capacity=2)
     s.unsafe_append("hello")
     s.unsafe_append("world")
@@ -638,7 +638,7 @@ def test_string_freeze_zero_copy():
 
 
 def test_string_freeze_shrinks():
-    """freeze() on an over-allocated StringArray trims to exact size."""
+    """Freeze() on an over-allocated StringArray trims to exact size."""
     var s = StringArray(capacity=100)
     s.unsafe_append("hi")
     var frozen = s^.freeze()
@@ -660,7 +660,7 @@ def test_string_getitem_bounds_check():
 
 
 def test_primitive_shrink_to_fit_with_offset():
-    """shrink_to_fit with non-zero offset copies the correct data slice."""
+    """Shrink_to_fit() with non-zero offset copies the correct data slice."""
     var a = Int64Array(capacity=8)
     a.unsafe_append(0)
     a.unsafe_append(10)
@@ -689,7 +689,7 @@ def test_primitive_shrink_to_fit_with_offset():
 
 
 def test_primitive_shrink_to_fit_preserves_nulls():
-    """shrink_to_fit with offset preserves the null bitmap correctly."""
+    """Shrink_to_fit() with offset preserves the null bitmap correctly."""
     var a = Int32Array(capacity=6)
     a.unsafe_append(0)
     a.unsafe_append_null()
@@ -712,7 +712,8 @@ def test_primitive_shrink_to_fit_preserves_nulls():
 
 
 def test_string_shrink_to_fit_with_offset():
-    """shrink_to_fit with non-zero offset extracts the correct string slice."""
+    """Shrink_to_fit() with non-zero offset extracts the correct string slice.
+    """
     var s = StringArray()
     s.unsafe_append("alpha")
     s.unsafe_append("beta")
@@ -736,7 +737,7 @@ def test_string_shrink_to_fit_with_offset():
 
 
 def test_list_shrink_to_fit_with_offset():
-    """shrink_to_fit with non-zero offset copies the correct offsets slice."""
+    """Shrink_to_fit() with non-zero offset copies the correct offsets slice."""
     var ints = array[int64]([1, 2, 3])
     var lists = ListArray.from_values(Array(ints^), capacity=5)
     # Append 4 more empty list entries so length=5, capacity=5
@@ -790,8 +791,8 @@ fn test_mut_parameter_compile_time() raises:
     # a compile-time check — if freeze() returned the wrong type, this won't compile.
     var a = Int64Array()
     a.append(1)
-    var frozen: PrimitiveArray[int64, False] = a^.freeze()
-    comptime assert not frozen.mut
+    var _: PrimitiveArray[int64, False] = a^.freeze()
+    comptime assert not PrimitiveArray[int64, False].mut
 
 
 def main():

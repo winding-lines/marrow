@@ -18,9 +18,9 @@ def test_schema_from_pyarrow():
     assert_equal(schema.fields[0].dtype, materialize[int32]())
     assert_equal(schema.fields[1].name, "string_field")
     assert_equal(schema.fields[1].dtype, materialize[string]())
-    var writer = String()
-    writer.write(c_schema)
-    assert_equal(writer, 'CArrowSchema(name="", format="+s", n_children=2)')
+    assert_equal(
+        String(c_schema), 'CArrowSchema(name="", format="+s", n_children=2)'
+    )
 
 
 def test_primitive_array_from_pyarrow():
@@ -41,7 +41,7 @@ def test_primitive_array_from_pyarrow():
     assert_equal(c_array.n_buffers, 2)
     assert_equal(c_array.n_children, 0)
 
-    var data = c_array.to_array(dtype)
+    var data = c_array^.to_array(dtype)
     var array = data^.as_int64()
     assert_equal(array.bitmap[].size(), 64)
     assert_equal(array.is_valid(0), True)
@@ -80,7 +80,7 @@ def test_binary_array_from_pyarrow():
     assert_equal(c_array.n_buffers, 3)
     assert_equal(c_array.n_children, 0)
 
-    var data = c_array.to_array(dtype)
+    var data = c_array^.to_array(dtype)
     var array = data^.as_string()
 
     assert_equal(array.bitmap[].size(), 64)
@@ -120,7 +120,7 @@ def test_list_array_from_pyarrow():
     assert_equal(c_array.n_buffers, 2)
     assert_equal(c_array.n_children, 1)
 
-    var data = c_array.to_array(dtype)
+    var data = c_array^.to_array(dtype)
     var array = data^.as_list()
 
     assert_equal(array.bitmap[].size(), 64)
@@ -213,7 +213,7 @@ def test_arrow_array_stream():
     assert_equal(c_array.length, 5)
     assert_equal(c_array.null_count, 0)
 
-    var array_data = c_array.to_array(schema)
+    var array_data = c_array^.to_array(schema)
     assert_equal(array_data.length, 5)
     assert_equal(len(array_data.children), 2)
 

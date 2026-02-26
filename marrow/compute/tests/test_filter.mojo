@@ -1,6 +1,13 @@
 from testing import assert_equal, assert_true, TestSuite
 
-from marrow.arrays import array, Array, Int32Array, Int64Array, PrimitiveArray
+from marrow.arrays import (
+    array,
+    Array,
+    Int32Array,
+    Int64Array,
+    PrimitiveArray,
+    nulls,
+)
 from marrow.dtypes import int32, int64, uint8
 from marrow.compute.filter import drop_nulls
 
@@ -33,7 +40,7 @@ def test_drop_nulls_no_nulls():
 
 
 def test_drop_nulls_all_nulls():
-    var a = Int64Array.nulls(5)
+    var a = nulls[int64](5)
     var result = drop_nulls[int64](a)
     assert_equal(len(result), 0)
 

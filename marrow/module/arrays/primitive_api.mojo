@@ -52,7 +52,7 @@ fn array(content: PythonObject) raises -> PythonObject:
     var actual = _PrimitiveArray[int64]()
 
     for v in content:
-        actual.append(Int(py=v))
+        actual.append(Scalar[int64.native](Int(py=v)))
 
     var offset = actual.offset
     var capacity = actual.capacity

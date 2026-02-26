@@ -2,6 +2,7 @@ from memory import (
     memset_zero,
     memcpy,
     memset,
+    ArcPointer,
 )
 from sys.info import simd_byte_width
 from sys import size_of
@@ -9,8 +10,32 @@ import math
 from bit import pop_count, count_trailing_zeros
 
 
-fn _required_bytes[T: DType](length: Int) -> Int:
-    return math.align_up(length * size_of[T](), 64)
+fn dynamic_size_of(dtype: DType) -> Int:
+    """Get size of a dtype by dispatching to compile-time size_of."""
+    if dtype == DType.bool:
+        return size_of[DType.bool]()
+    elif dtype == DType.int8:
+        return size_of[DType.int8]()
+    elif dtype == DType.int16:
+        return size_of[DType.int16]()
+    elif dtype == DType.int32:
+        return size_of[DType.int32]()
+    elif dtype == DType.int64:
+        return size_of[DType.int64]()
+    elif dtype == DType.uint8:
+        return size_of[DType.uint8]()
+    elif dtype == DType.uint16:
+        return size_of[DType.uint16]()
+    elif dtype == DType.uint32:
+        return size_of[DType.uint32]()
+    elif dtype == DType.uint64:
+        return size_of[DType.uint64]()
+    elif dtype == DType.float32:
+        return size_of[DType.float32]()
+    elif dtype == DType.float64:
+        return size_of[DType.float64]()
+    debug_assert(False, "Can't get the size of ", dtype)
+    return 0
 
 
 comptime simd_width = simd_byte_width()
@@ -18,29 +43,53 @@ comptime simd_width = simd_byte_width()
 comptime simd_widths = (simd_width, simd_width // 2, 1)
 
 
-# TODO(kszucs): add mut comptime parameter and probably an owns based on which use either ownedpointer or plain pointer but rather not unsafepointer
-# TODO(kszucs): parametrize its mutability
+struct ForeignMemoryOwner(Movable):
+    """Keeps foreign memory alive by holding a typed release callback.
+
+    When the last ArcPointer[ForeignMemoryOwner] is dropped, __del__ fires and
+    invokes the release function — e.g. the Arrow C Data Interface release callback.
+    This is equivalent to Rust's Deallocation::Custom(Arc<dyn Allocation>) pattern.
+    """
+
+    var ptr: UnsafePointer[NoneType, MutAnyOrigin]
+    var release: fn(UnsafePointer[NoneType, MutAnyOrigin]) -> None
+
+    fn __init__(
+        out self,
+        ptr: UnsafePointer[NoneType, MutAnyOrigin],
+        release: fn(UnsafePointer[NoneType, MutAnyOrigin]) -> None,
+    ):
+        self.ptr = ptr
+        self.release = release
+
+    fn __del__(deinit self):
+        self.release(self.ptr)
+
+
 struct Buffer(Movable):
     var ptr: UnsafePointer[UInt8, MutAnyOrigin]
     var size: Int
-    var owns: Bool
     var offset: Int
+    # None  → this buffer owns the memory; ptr.free() is called on drop.
+    # Some  → a reference-counted ForeignMemoryOwner manages the lifetime;
+    #         ptr is NOT freed directly (the owner's release callback handles it).
+    var _owner: Optional[ArcPointer[ForeignMemoryOwner]]
 
     fn __init__(
         out self,
         ptr: UnsafePointer[UInt8, MutAnyOrigin],
         size: Int,
-        owns: Bool = True,
         offset: Int = 0,
+        _owner: Optional[ArcPointer[ForeignMemoryOwner]] = None,
     ):
         self.ptr = ptr
         self.size = size
-        self.owns = owns
         self.offset = offset
+        self._owner = _owner
 
     @staticmethod
     fn alloc[I: Intable, //, T: DType = DType.uint8](length: I) -> Buffer:
-        var size = _required_bytes[T](Int(length))
+        var size = math.align_up(Int(length) * size_of[T](), 64)
         var ptr = alloc[UInt8](size, alignment=64)
         memset_zero(ptr, size)
         return Buffer(ptr, size)
@@ -56,11 +105,25 @@ struct Buffer(Movable):
         return buffer^
 
     @staticmethod
-    fn view[
-        I: Intable, //, T: DType = DType.uint8
-    ](ptr: UnsafePointer[NoneType, MutAnyOrigin], length: I,) raises -> Buffer:
+    fn foreign_view[
+        I: Intable, //
+    ](
+        ptr: UnsafePointer[NoneType, MutAnyOrigin],
+        length: I,
+        dtype: DType,
+        owner: ArcPointer[ForeignMemoryOwner],
+    ) -> Buffer:
+        """Create a non-owning view into foreign memory.
+
+        The caller passes an ArcPointer[ForeignMemoryOwner] that keeps the
+        source allocation alive for as long as any buffer (or bitmap) derived
+        from it exists.  When the last such buffer is dropped the owner's
+        release callback fires automatically.
+        """
         return Buffer(
-            ptr.bitcast[UInt8](), _required_bytes[T](Int(length)), owns=False
+            ptr.bitcast[UInt8](),
+            math.align_up(Int(length) * dynamic_size_of(dtype), 64),
+            _owner=Optional(owner),
         )
 
     @always_inline
@@ -79,11 +142,11 @@ struct Buffer(Movable):
         )
         swap(self.ptr, new.ptr)
         swap(self.size, new.size)
-        swap(self.owns, new.owns)
+        swap(self._owner, new._owner)
         self.offset = 0
 
     fn __del__(deinit self):
-        if self.owns:
+        if not self._owner:
             self.ptr.free()
 
     @always_inline
@@ -112,7 +175,23 @@ struct Bitmap(Movable, Stringable):
 
     @staticmethod
     fn alloc[I: Intable](length: I) -> Bitmap:
-        return Bitmap(Buffer.alloc(math.ceildiv(Int(length), 8)))
+        var byte_length = math.ceildiv(Int(length), 8)
+        return Bitmap(Buffer.alloc(byte_length))
+
+    @staticmethod
+    fn foreign_view[
+        I: Intable, //
+    ](
+        ptr: UnsafePointer[NoneType, MutAnyOrigin],
+        length: I,
+        owner: ArcPointer[ForeignMemoryOwner],
+    ) -> Bitmap:
+        var byte_length = math.ceildiv(Int(length), 8)
+        var buffer = Buffer.foreign_view(ptr, byte_length, DType.uint8, owner)
+        return Bitmap(buffer^)
+
+    fn as_buffer(deinit self) -> Buffer:
+        return self.buffer^
 
     fn __init__(out self, var buffer: Buffer, offset: Int = 0):
         self.buffer = buffer^

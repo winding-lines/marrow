@@ -260,6 +260,7 @@ struct DataType(Copyable, Equatable, Representable, Stringable):
     fn __repr__(self) -> String:
         return self.__str__()
 
+    @always_inline
     fn is_bool(self) -> Bool:
         return self.code == BOOL
 
@@ -288,10 +289,6 @@ struct DataType(Copyable, Equatable, Representable, Stringable):
             return 64
         else:
             return 0
-
-    @always_inline
-    fn is_boolean(self) -> Bool:
-        return self.code == BOOL
 
     @always_inline
     fn is_fixed_size(self) -> Bool:
@@ -330,6 +327,10 @@ struct DataType(Copyable, Equatable, Representable, Stringable):
     @always_inline
     fn is_numeric(self) -> Bool:
         return self.is_integer() or self.is_floating_point()
+
+    @always_inline
+    fn is_primitive(self) -> Bool:
+        return self.is_numeric() or self.is_bool()
 
     @always_inline
     fn is_string(self) -> Bool:

@@ -1,11 +1,11 @@
 from ffi import external_call, c_char
 from memory import ArcPointer, memcpy
 from sys import size_of
+from .buffers import ForeignMemoryOwner
 
 import math
 from python import Python, PythonObject
 from python._cpython import CPython, PyObjectPtr
-from io.write import Writable, Writer
 
 from .dtypes import *
 from .arrays import *
@@ -19,7 +19,7 @@ fn empty_release_schema(ptr: UnsafePointer[CArrowSchema, MutAnyOrigin]):
 
 
 @fieldwise_init
-struct CArrowSchema(Copyable, Representable, Stringable, Writable):
+struct CArrowSchema(Copyable, Stringable):
     var format: UnsafePointer[c_char, MutAnyOrigin]
     var name: UnsafePointer[c_char, MutAnyOrigin]
     var metadata: UnsafePointer[c_char, MutAnyOrigin]
@@ -83,7 +83,7 @@ struct CArrowSchema(Copyable, Representable, Stringable, Writable):
             fmt = "g"
         elif dtype == materialize[binary]():
             fmt = "z"
-        elif dtype == materialize[string]():
+        elif dtype.is_string():
             fmt = "u"
         elif dtype.is_struct():
             fmt = "+s"
@@ -186,38 +186,32 @@ struct CArrowSchema(Copyable, Representable, Stringable, Writable):
         var nullable = self.flags & ARROW_FLAG_NULLABLE
         return Field(String(name), dtype^, nullable != 0)
 
-    fn write_to[W: Writer](self, mut writer: W):
-        """
-        Formats this CArrowSchema to the provided Writer.
-
-        Parameters:
-            W: A type conforming to the Writable trait.
-
-        Args:
-            writer: The object to write to.
-        """
+    fn __str__(self) -> String:
         var metadata = 'metadata="{}", '.format(
             StringSlice(unsafe_from_utf8_ptr=self.metadata)
         ) if self.metadata else ""
-
-        writer.write(
-            'CArrowSchema(name="{}", format="{}", {}n_children={})'.format(
-                StringSlice(unsafe_from_utf8_ptr=self.name),
-                StringSlice(unsafe_from_utf8_ptr=self.format),
-                metadata,
-                self.n_children,
-            )
+        return 'CArrowSchema(name="{}", format="{}", {}n_children={})'.format(
+            StringSlice(unsafe_from_utf8_ptr=self.name),
+            StringSlice(unsafe_from_utf8_ptr=self.format),
+            metadata,
+            self.n_children,
         )
 
-    fn __str__(self) -> String:
-        return String.write(self)
 
-    fn __repr__(self) -> String:
-        return String.write(self)
+fn _release_c_array(ptr: UnsafePointer[NoneType, MutAnyOrigin]) -> None:
+    """Release callback for CArrowArray imported via the C Data Interface.
+
+    Called when the last Buffer (or Bitmap) that references the imported array
+    is dropped.  Invokes the C-level release callback so the producer can free
+    its resources, then frees the Mojo heap allocation that owns the struct.
+    """
+    var c_ptr = ptr.bitcast[CArrowArray]()
+    c_ptr[].release(c_ptr)
+    c_ptr.free()
 
 
 @fieldwise_init
-struct CArrowArray(Copyable):
+struct CArrowArray(Movable):
     var length: Int64
     var null_count: Int64
     var offset: Int64
@@ -233,54 +227,141 @@ struct CArrowArray(Copyable):
     var release: fn(UnsafePointer[CArrowArray, MutAnyOrigin]) -> None
     var private_data: OpaquePointer[MutAnyOrigin]
 
+    fn __del__(deinit self):
+        self.release(UnsafePointer(to=self))
+
     @staticmethod
     fn from_pyarrow(pyobj: PythonObject) raises -> CArrowArray:
         var ptr = alloc[CArrowArray](1)
         pyobj._export_to_c(Int(ptr))
         return ptr.take_pointee()
 
-    fn to_array(self, dtype: DataType) raises -> Array:
+    fn _to_array(
+        self, dtype: DataType, keeper: ArcPointer[ForeignMemoryOwner]
+    ) raises -> Array:
+        """Build an Array from this CArrowArray, all buffers sharing one keeper.
+
+        All Buffer / Bitmap views hold a copy of `keeper` (an ArcPointer, so
+        copying just bumps the ref-count).  The C release callback fires
+        automatically once the last buffer is dropped.
+        """
+        # Buffer sizes must cover all elements including the offset, because the
+        # raw C buffers start at element 0 regardless of the logical array offset.
+        var length = self.length + self.offset
+
         var bitmap: ArcPointer[Bitmap]
         if self.buffers[0]:
             bitmap = ArcPointer(
-                Bitmap(
-                    Buffer.view(self.buffers[0], (Int(self.length) + 7) // 8)
-                )
+                Bitmap.foreign_view(self.buffers[0], length, keeper)
             )
         else:
-            # bitmaps are allowed to be nullptrs by the specification, in this
-            # case we allocate a new buffer to hold the null bitmap
+            # bitmaps are allowed to be nullptrs by the specification; in this
+            # case we allocate a new owned buffer to hold the validity bitmap.
             bitmap = ArcPointer(Bitmap.alloc(self.length))
             bitmap[].unsafe_range_set(0, self.length, True)
 
         var buffers = List[ArcPointer[Buffer]]()
-        if dtype.is_numeric() or dtype == materialize[bool_]():
-            var buffer = Buffer.view[DType.uint8](self.buffers[1], self.length)
-            buffers.append(ArcPointer(buffer^))
-        elif dtype == materialize[string]():
-            var offsets = Buffer.view[DType.uint32](
-                self.buffers[1], self.length + 1
+        var children = List[ArcPointer[Array]]()
+
+        if dtype.is_bool():
+            if self.n_buffers != 2:
+                raise Error(
+                    "bool array must have 2 buffers, got {}".format(
+                        self.n_buffers
+                    )
+                )
+            if self.n_children != 0:
+                raise Error(
+                    "bool array must have 0 children, got {}".format(
+                        self.n_children
+                    )
+                )
+            var values = Bitmap.foreign_view(self.buffers[1], length, keeper)
+            buffers.append(ArcPointer(values^.as_buffer()))
+        elif dtype.is_primitive():
+            if self.n_buffers != 2:
+                raise Error(
+                    "numeric array must have 2 buffers, got {}".format(
+                        self.n_buffers
+                    )
+                )
+            if self.n_children != 0:
+                raise Error(
+                    "numeric array must have 0 children, got {}.".format(
+                        self.n_children
+                    )
+                )
+            var values = Buffer.foreign_view(
+                self.buffers[1], length, dtype.native, keeper
             )
-            var values_size = Int(offsets.unsafe_get(Int(self.length)))
-            var values = Buffer.view[DType.uint8](self.buffers[2], values_size)
-            buffers.append(ArcPointer(offsets^))
             buffers.append(ArcPointer(values^))
         elif dtype.is_list():
-            var offsets = Buffer.view[DType.uint32](
-                self.buffers[1], self.length + 1
+            if self.n_buffers != 2:
+                raise Error(
+                    "list array must have 2 buffers, got {}".format(
+                        self.n_buffers
+                    )
+                )
+            if self.n_children != 1:
+                raise Error(
+                    "list array must have 1 child, got {}".format(
+                        self.n_children
+                    )
+                )
+            # list has only an offsets buffer; child data lives in self.children
+            var offsets = Buffer.foreign_view(
+                self.buffers[1], length + 1, DType.int32, keeper
             )
             buffers.append(ArcPointer(offsets^))
+            # add the single values child array
+            var values_field = dtype.fields[0].copy()
+            var values_array = self.children[0][]._to_array(
+                values_field.dtype, keeper
+            )
+            children.append(ArcPointer(values_array^))
+        elif dtype.is_string():
+            if self.n_buffers != 3:
+                raise Error(
+                    "string array must have 3 buffers, got {}".format(
+                        self.n_buffers
+                    )
+                )
+            if self.n_children != 0:
+                raise Error(
+                    "string array must have 0 children, got {}".format(
+                        self.n_children
+                    )
+                )
+            var offsets = Buffer.foreign_view(
+                self.buffers[1], length + 1, DType.int32, keeper
+            )
+            var data_len = offsets.unsafe_get[DType.int32](Int(length))
+            var values = Buffer.foreign_view(
+                self.buffers[2], data_len, DType.uint8, keeper
+            )
+            buffers.append(ArcPointer(offsets^))
+            buffers.append(ArcPointer(values^))
         elif dtype.is_struct():
-            # Since the children buffers are handled below there is nothing to do here.
-            pass
+            if self.n_buffers != 1:
+                raise Error(
+                    "struct array must have 1 buffer, got {}".format(
+                        self.n_buffers
+                    )
+                )
+            if self.n_children != Int64(len(dtype.fields)):
+                raise Error(
+                    "struct array must have {} children, got {}".format(
+                        len(dtype.fields), self.n_children
+                    )
+                )
+            for i in range(self.n_children):
+                var child_field = dtype.fields[i].copy()
+                var child_array = self.children[i][]._to_array(
+                    child_field.dtype, keeper
+                )
+                children.append(ArcPointer(child_array^))
         else:
-            raise Error("Unknown dtype: " + String(dtype))
-
-        var children = List[ArcPointer[Array]]()
-        for i in range(self.n_children):
-            var child_field = dtype.fields[i].copy()
-            var child_array = self.children[i][].to_array(child_field.dtype)
-            children.append(ArcPointer(child_array^))
+            raise Error("unsupported dtype for buffer import: " + String(dtype))
 
         return Array(
             dtype=dtype.copy(),
@@ -290,6 +371,24 @@ struct CArrowArray(Copyable):
             children=children^,
             offset=Int(self.offset),
         )
+
+    fn to_array(deinit self, dtype: DataType) raises -> Array:
+        """Convert to an Array, taking ownership of the C struct.
+
+        The CArrowArray is moved onto the heap and wrapped in a
+        ForeignMemoryOwner.  Every Buffer / Bitmap view shares the same
+        ArcPointer[ForeignMemoryOwner], so the C release callback fires
+        automatically when the last buffer referencing this import is dropped.
+        """
+        var heap_c = alloc[CArrowArray](1)
+        heap_c.init_pointee_move(self^)
+        var keeper = ArcPointer(
+            ForeignMemoryOwner(
+                ptr=heap_c.bitcast[NoneType](),
+                release=_release_c_array,
+            )
+        )
+        return heap_c[]._to_array(dtype, keeper)
 
 
 # See: https://arrow.apache.org/docs/format/CStreamInterface.html

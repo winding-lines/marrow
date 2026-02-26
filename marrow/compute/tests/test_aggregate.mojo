@@ -1,6 +1,6 @@
 from testing import assert_equal, TestSuite
 
-from marrow.arrays import array, Array, Int32Array, Int64Array
+from marrow.arrays import array, Array, Int32Array, Int64Array, nulls
 from marrow.dtypes import int32, int64
 from marrow.compute.aggregate import sum
 
@@ -23,7 +23,7 @@ def test_sum_with_nulls():
 
 
 def test_sum_all_nulls():
-    var a = Int64Array.nulls(5)
+    var a = nulls[int64](5)
     var result = sum[int64](a)
     assert_equal(result, 0)
 
