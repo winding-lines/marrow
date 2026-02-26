@@ -6,6 +6,7 @@ from marrow.buffers import Buffer, Bitmap
 from marrow.compute.filter import drop_nulls
 from marrow.test_fixtures.arrays import (
     assert_bitmap_set,
+    buffer_from,
     build_list_of_list,
     build_struct,
 )
@@ -383,7 +384,7 @@ def test_string_builder():
 
 def test_list_int_array():
     var ints = Int64Array(
-        Array.from_buffer[int64](Buffer.from_values[DType.int64](1, 2, 3), 3)
+        Array.from_buffer[int64](buffer_from[DType.int64](1, 2, 3), 3)
     )
     var lists = ListArray.from_values(ints^)
     assert_equal(lists.dtype, list_(materialize[int64]()))

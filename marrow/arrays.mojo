@@ -175,7 +175,7 @@ struct Array(Copyable, Movable, Stringable):
 # array is mutable because it's being built, but it will be frozen once it's ready
 # it should be false by default, there can be type aliases like Int8Builder
 # also the capacity fields should be present only for builders
-struct BoolArray[mut: Bool = True](Movable, Sized):
+struct BoolArray[is_builder: Bool = True](Movable, Sized):
     """An Arrow array of boolean values stored as a bit-packed buffer."""
 
     var length: Int
@@ -209,7 +209,7 @@ struct BoolArray[mut: Bool = True](Movable, Sized):
     fn __init__[
         other_mut: Bool, //
     ](out self, deinit other: BoolArray[other_mut]):
-        comptime assert not Self.mut, "use direct move for mutable-to-mutable"
+        comptime assert not Self.is_builder, "use direct move for mutable-to-mutable"
         self.length = other.length
         self.offset = other.offset
         self.capacity = other.capacity
@@ -217,7 +217,7 @@ struct BoolArray[mut: Bool = True](Movable, Sized):
         self.buffer = other.buffer^
 
     fn grow(mut self, capacity: Int):
-        comptime assert Self.mut, "cannot grow a frozen (immutable) array"
+        comptime assert Self.is_builder, "cannot grow a frozen (immutable) array"
         self.bitmap[].resize(capacity)
         self.buffer[].resize((capacity + 7) // 8)
         self.capacity = capacity
@@ -240,7 +240,7 @@ struct BoolArray[mut: Bool = True](Movable, Sized):
     @always_inline
     fn unsafe_set(mut self, index: Int, value: Bool):
         comptime assert (
-            Self.mut
+            Self.is_builder
         ), "cannot set a value on a frozen (immutable) array"
         self.bitmap[].unsafe_set(index + self.offset, True)
         var adjusted = index + self.offset
@@ -257,13 +257,13 @@ struct BoolArray[mut: Bool = True](Movable, Sized):
 
     @always_inline
     fn unsafe_append(mut self, value: Bool):
-        comptime assert Self.mut, "cannot append to a frozen (immutable) array"
+        comptime assert Self.is_builder, "cannot append to a frozen (immutable) array"
         self.unsafe_set(self.length, value)
         self.length += 1
 
     @always_inline
     fn unsafe_append_null(mut self):
-        comptime assert Self.mut, "cannot append to a frozen (immutable) array"
+        comptime assert Self.is_builder, "cannot append to a frozen (immutable) array"
         self.bitmap[].unsafe_set(self.length + self.offset, False)
         self.length += 1
 
@@ -279,7 +279,7 @@ struct BoolArray[mut: Bool = True](Movable, Sized):
 
     fn __setitem__(mut self, index: Int, value: Bool) raises:
         comptime assert (
-            Self.mut
+            Self.is_builder
         ), "cannot set item on a frozen (immutable) array"
         if index < 0 or index >= self.length:
             raise Error(
@@ -293,7 +293,7 @@ struct BoolArray[mut: Bool = True](Movable, Sized):
     fn shrink_to_fit(mut self):
         """Shrink buffers to exact length and normalize offset to 0 in place."""
         comptime assert (
-            Self.mut
+            Self.is_builder
         ), "cannot shrink_to_fit a frozen (immutable) array"
         if self.length == self.capacity and self.offset == 0:
             return
@@ -321,13 +321,13 @@ struct BoolArray[mut: Bool = True](Movable, Sized):
         return BoolArray[False](self^)
 
     fn append(mut self, value: Bool):
-        comptime assert Self.mut, "cannot append to a frozen (immutable) array"
+        comptime assert Self.is_builder, "cannot append to a frozen (immutable) array"
         if self.length >= self.capacity:
             self.grow(max(self.capacity * 2, self.length + 1))
         self.unsafe_append(value)
 
     fn extend(mut self, values: List[Bool]):
-        comptime assert Self.mut, "cannot extend a frozen (immutable) array"
+        comptime assert Self.is_builder, "cannot extend a frozen (immutable) array"
         if self.__len__() + len(values) >= self.capacity:
             self.grow(self.capacity + len(values))
         for value in values:
@@ -339,7 +339,7 @@ struct BoolArray[mut: Bool = True](Movable, Sized):
         return self.length - valid_count
 
 
-struct PrimitiveArray[T: DataType, mut: Bool = True](Movable, Sized):
+struct PrimitiveArray[T: DataType, is_builder: Bool = True](Movable, Sized):
     """An Arrow array of primitive types."""
 
     # comptime assert T.is_primitive(), "PrimitiveArray requires a primitive data type"
@@ -381,7 +381,7 @@ struct PrimitiveArray[T: DataType, mut: Bool = True](Movable, Sized):
     fn __init__[
         other_mut: Bool, //
     ](out self, deinit other: PrimitiveArray[Self.T, other_mut]):
-        comptime assert not Self.mut, "use direct move for mutable-to-mutable"
+        comptime assert not Self.is_builder, "use direct move for mutable-to-mutable"
         self.length = other.length
         self.offset = other.offset
         self.capacity = other.capacity
@@ -389,7 +389,7 @@ struct PrimitiveArray[T: DataType, mut: Bool = True](Movable, Sized):
         self.buffer = other.buffer^
 
     fn grow(mut self, capacity: Int):
-        comptime assert Self.mut, "cannot grow a frozen (immutable) array"
+        comptime assert Self.is_builder, "cannot grow a frozen (immutable) array"
         self.bitmap[].resize(capacity)
         self.buffer[].resize[Self.T.native](capacity)
         self.capacity = capacity
@@ -409,20 +409,20 @@ struct PrimitiveArray[T: DataType, mut: Bool = True](Movable, Sized):
     @always_inline
     fn unsafe_set(mut self, index: Int, value: Self.scalar):
         comptime assert (
-            Self.mut
+            Self.is_builder
         ), "cannot set a value on a frozen (immutable) array"
         self.bitmap[].unsafe_set(index + self.offset, True)
         self.buffer[].unsafe_set[Self.T.native](index + self.offset, value)
 
     @always_inline
     fn unsafe_append(mut self, value: Self.scalar):
-        comptime assert Self.mut, "cannot append to a frozen (immutable) array"
+        comptime assert Self.is_builder, "cannot append to a frozen (immutable) array"
         self.unsafe_set(self.length, value)
         self.length += 1
 
     @always_inline
     fn unsafe_append_null(mut self):
-        comptime assert Self.mut, "cannot append to a frozen (immutable) array"
+        comptime assert Self.is_builder, "cannot append to a frozen (immutable) array"
         self.bitmap[].unsafe_set(self.length + self.offset, False)
         self.length += 1
 
@@ -438,7 +438,7 @@ struct PrimitiveArray[T: DataType, mut: Bool = True](Movable, Sized):
 
     fn __setitem__(mut self, index: Int, value: Self.scalar) raises:
         comptime assert (
-            Self.mut
+            Self.is_builder
         ), "cannot set item on a frozen (immutable) array"
         if index < 0 or index >= self.length:
             raise Error(
@@ -452,7 +452,7 @@ struct PrimitiveArray[T: DataType, mut: Bool = True](Movable, Sized):
     fn shrink_to_fit(mut self):
         """Shrink buffers to exact length and normalize offset to 0 in place."""
         comptime assert (
-            Self.mut
+            Self.is_builder
         ), "cannot shrink_to_fit a frozen (immutable) array"
         if self.length == self.capacity and self.offset == 0:
             return
@@ -469,7 +469,7 @@ struct PrimitiveArray[T: DataType, mut: Bool = True](Movable, Sized):
         return PrimitiveArray[Self.T, False](self^)
 
     fn append(mut self, value: Self.scalar):
-        comptime assert Self.mut, "cannot append to a frozen (immutable) array"
+        comptime assert Self.is_builder, "cannot append to a frozen (immutable) array"
         if self.length >= self.capacity:
             self.grow(max(self.capacity * 2, self.length + 1))
         self.unsafe_append(value)
@@ -477,7 +477,7 @@ struct PrimitiveArray[T: DataType, mut: Bool = True](Movable, Sized):
     # fn append(mut self, value: Optional[Self.scalar]):
 
     fn extend(mut self, values: List[self.scalar]):
-        comptime assert Self.mut, "cannot extend a frozen (immutable) array"
+        comptime assert Self.is_builder, "cannot extend a frozen (immutable) array"
         if self.__len__() + len(values) >= self.capacity:
             self.grow(self.capacity + len(values))
         for value in values:
@@ -501,7 +501,7 @@ comptime Float32Array = PrimitiveArray[float32]
 comptime Float64Array = PrimitiveArray[float64]
 
 
-struct StringArray[mut: Bool = True](Movable, Sized):
+struct StringArray[is_builder: Bool = True](Movable, Sized):
     var length: Int
     var offset: Int
     var capacity: Int
@@ -539,7 +539,7 @@ struct StringArray[mut: Bool = True](Movable, Sized):
     fn __init__[
         other_mut: Bool, //
     ](out self, deinit other: StringArray[other_mut]):
-        comptime assert not Self.mut, "use direct move for mutable-to-mutable"
+        comptime assert not Self.is_builder, "use direct move for mutable-to-mutable"
         self.length = other.length
         self.offset = other.offset
         self.capacity = other.capacity
@@ -552,7 +552,7 @@ struct StringArray[mut: Bool = True](Movable, Sized):
 
     # TODO(kszucs): not grow by a single slot
     fn grow(mut self, capacity: Int):
-        comptime assert Self.mut, "cannot grow a frozen (immutable) array"
+        comptime assert Self.is_builder, "cannot grow a frozen (immutable) array"
         self.bitmap[].resize(capacity)
         self.offsets[].resize[DType.uint32](capacity + 1)
         self.capacity = capacity
@@ -561,7 +561,7 @@ struct StringArray[mut: Bool = True](Movable, Sized):
         return self.bitmap[].unsafe_get(index)
 
     fn unsafe_append(mut self, value: String):
-        comptime assert Self.mut, "cannot append to a frozen (immutable) array"
+        comptime assert Self.is_builder, "cannot append to a frozen (immutable) array"
         # todo(kszucs): use unsafe set
         var index = self.length
         var last_offset = self.offsets[].unsafe_get[DType.uint32](index)
@@ -570,25 +570,25 @@ struct StringArray[mut: Bool = True](Movable, Sized):
         self.bitmap[].unsafe_set(index, True)
         self.offsets[].unsafe_set[DType.uint32](index + 1, next_offset)
         self.values[].resize[DType.uint8](next_offset)
-        var dst_address = self.values[].get_ptr_at(Int(last_offset))
+        var dst_address = self.values[].ptr + Int(last_offset)
         var src_address = value.unsafe_ptr()
         memcpy(dest=dst_address, src=src_address, count=len(value))
 
-    fn unsafe_get(self, index: UInt) -> StringSlice[ImmutAnyOrigin]:
+    fn unsafe_get[
+        self_origin: Origin[mut=False], //
+    ](ref [self_origin] self, index: UInt) -> StringSlice[self_origin]:
         var offset_idx = Int(index) + self.offset
         var start_offset = self.offsets[].unsafe_get[DType.uint32](offset_idx)
         var end_offset = self.offsets[].unsafe_get[DType.uint32](offset_idx + 1)
-        var address = self.values[].get_ptr_at(Int(start_offset))
         var length = Int(end_offset) - Int(start_offset)
-        return StringSlice(
-            unsafe_from_utf8=Span[Byte](
-                ptr=address.mut_cast[False](), length=length
-            )
-        )
+        var ptr = (self.values[].ptr + Int(start_offset))
+            .mut_cast[False]()
+            .unsafe_origin_cast[self_origin]()
+        return StringSlice[self_origin](ptr=ptr, length=length)
 
     fn unsafe_set(mut self, index: Int, value: String) raises:
         comptime assert (
-            Self.mut
+            Self.is_builder
         ), "cannot set a value on a frozen (immutable) array"
         var start_offset = self.offsets[].unsafe_get[DType.int32](index)
         var end_offset = self.offsets[].unsafe_get[DType.int32](index + 1)
@@ -600,11 +600,13 @@ struct StringArray[mut: Bool = True](Movable, Sized):
                 " length"
             )
 
-        var dst_address = self.values[].get_ptr_at(Int(start_offset))
+        var dst_address = self.values[].ptr + Int(start_offset)
         var src_address = value.unsafe_ptr()
         memcpy(dest=dst_address, src=src_address, count=length)
 
-    fn __getitem__(self, index: Int) raises -> StringSlice[ImmutAnyOrigin]:
+    fn __getitem__[
+        self_origin: Origin[mut=False], //
+    ](ref [self_origin] self, index: Int) raises -> StringSlice[self_origin]:
         if index < 0 or index >= self.length:
             raise Error(
                 "index "
@@ -617,7 +619,7 @@ struct StringArray[mut: Bool = True](Movable, Sized):
     fn shrink_to_fit(mut self):
         """Shrink buffers to exact length and normalize offset to 0 in place."""
         comptime assert (
-            Self.mut
+            Self.is_builder
         ), "cannot shrink_to_fit a frozen (immutable) array"
         if self.length == self.capacity and self.offset == 0:
             return
@@ -651,7 +653,7 @@ struct StringArray[mut: Bool = True](Movable, Sized):
         return StringArray[False](self^)
 
 
-struct ListArray[mut: Bool = True](Movable, Sized):
+struct ListArray[is_builder: Bool = True](Movable, Sized):
     var dtype: DataType
     var length: Int
     var offset: Int
@@ -681,7 +683,7 @@ struct ListArray[mut: Bool = True](Movable, Sized):
     fn __init__[
         other_mut: Bool, //
     ](out self, deinit other: ListArray[other_mut]):
-        comptime assert not Self.mut, "use direct move for mutable-to-mutable"
+        comptime assert not Self.is_builder, "use direct move for mutable-to-mutable"
         self.dtype = other.dtype^
         self.length = other.length
         self.offset = other.offset
@@ -726,7 +728,7 @@ struct ListArray[mut: Bool = True](Movable, Sized):
         return self.bitmap[].unsafe_get(index)
 
     fn unsafe_append(mut self, is_valid: Bool):
-        comptime assert Self.mut, "cannot append to a frozen (immutable) array"
+        comptime assert Self.is_builder, "cannot append to a frozen (immutable) array"
         self.bitmap[].unsafe_set(self.length, is_valid)
         self.offsets[].unsafe_set[DType.uint32](
             self.length + 1, UInt32(self.values[].length)
@@ -736,7 +738,7 @@ struct ListArray[mut: Bool = True](Movable, Sized):
     fn shrink_to_fit(mut self):
         """Shrink buffers to exact length and normalize offset to 0 in place."""
         comptime assert (
-            Self.mut
+            Self.is_builder
         ), "cannot shrink_to_fit a frozen (immutable) array"
         if self.length == self.capacity and self.offset == 0:
             return
@@ -748,7 +750,7 @@ struct ListArray[mut: Bool = True](Movable, Sized):
         comptime u32_bytes = size_of[DType.uint32]()
         memcpy(
             dest=new_offsets.ptr,
-            src=offsets[].get_ptr_at(self.offset * u32_bytes),
+            src=offsets[].ptr + (self.offset * u32_bytes),
             count=(self.length + 1) * u32_bytes,
         )
 
@@ -788,7 +790,7 @@ struct ListArray[mut: Bool = True](Movable, Sized):
         )
 
 
-struct StructArray[mut: Bool = True](Movable, Sized):
+struct StructArray[is_builder: Bool = True](Movable, Sized):
     var dtype: DataType
     var length: Int
     var capacity: Int
@@ -819,7 +821,7 @@ struct StructArray[mut: Bool = True](Movable, Sized):
     fn __init__[
         other_mut: Bool, //
     ](out self, deinit other: StructArray[other_mut]):
-        comptime assert not Self.mut, "use direct move for mutable-to-mutable"
+        comptime assert not Self.is_builder, "use direct move for mutable-to-mutable"
         self.dtype = other.dtype^
         self.length = other.length
         self.capacity = other.capacity
@@ -845,7 +847,7 @@ struct StructArray[mut: Bool = True](Movable, Sized):
     fn shrink_to_fit(mut self):
         """Shrink bitmap to exact length in place."""
         comptime assert (
-            Self.mut
+            Self.is_builder
         ), "cannot shrink_to_fit a frozen (immutable) array"
         if self.length == self.capacity:
             return

@@ -58,14 +58,6 @@ def test_buffer_set_get():
     assert_equal(buf.unsafe_get[DType.uint16](1), 44)
 
 
-def test_buffer_from_values():
-    var buf = Buffer.from_values[DType.int64](-3, 9, 81)
-
-    assert_equal(buf.unsafe_get[DType.int64](0), -3)
-    assert_equal(buf.unsafe_get[DType.int64](1), 9)
-    assert_equal(buf.unsafe_get[DType.int64](2), 81)
-
-
 def test_buffer_swap():
     var one = Buffer.alloc(10)
     one.unsafe_set(0, 111)
@@ -128,7 +120,7 @@ def test_count_leading_ones():
     assert_equal(b.count_leading_ones(1), 1)
 
 
-def _reset(mut bitmap: Bitmap):
+def _reset(mut bitmap: Bitmap[mut=True]):
     bitmap.unsafe_range_set(0, bitmap.length(), False)
     assert_bitmap_set(bitmap, [], "after _reset")
 
@@ -275,6 +267,68 @@ def test_bitmap_moveinit_with_offset():
     var moved_bitmap = bitmap^
     assert_equal(moved_bitmap.offset, 2)
     assert_true(moved_bitmap.unsafe_get(0))
+
+
+def test_buffer_freeze():
+    var buf = Buffer.alloc(10)
+    buf.unsafe_set(0, 42)
+    buf.unsafe_set(1, 99)
+
+    var frozen = buf^.freeze()
+    # Reads still work on the frozen buffer.
+    assert_equal(frozen.unsafe_get(0), 42)
+    assert_equal(frozen.unsafe_get(1), 99)
+    assert_equal(frozen.size, 64)
+    assert_equal(frozen.length(), 64)
+
+
+def test_buffer_freeze_preserves_offset():
+    var buf = Buffer.alloc(10)
+    buf.unsafe_set(2, 77)
+    buf.offset = 2
+
+    var frozen = buf^.freeze()
+    assert_equal(frozen.offset, 2)
+    assert_equal(frozen.unsafe_get(0), 77)
+
+
+def test_bitmap_freeze():
+    var bm = Bitmap.alloc(16)
+    bm.unsafe_set(0, True)
+    bm.unsafe_set(5, True)
+    bm.unsafe_set(7, True)
+
+    var frozen = bm^.freeze()
+    # Reads still work on the frozen bitmap.
+    assert_true(frozen.unsafe_get(0))
+    assert_false(frozen.unsafe_get(1))
+    assert_true(frozen.unsafe_get(5))
+    assert_true(frozen.unsafe_get(7))
+    assert_equal(frozen.bit_count(), 3)
+
+
+def test_bitmap_freeze_preserves_offset():
+    var bm = Bitmap.alloc(16)
+    bm.unsafe_set(3, True)
+    bm.offset = 3
+
+    var frozen = bm^.freeze()
+    assert_equal(frozen.offset, 3)
+    assert_true(frozen.unsafe_get(0))  # bit 3
+
+
+def test_bitmap_to_buffer_implicit():
+    # Bitmap implicitly converts to Buffer when passed where a Buffer is expected.
+    var bm = Bitmap.alloc(8)
+    bm.unsafe_set(0, True)
+    bm.unsafe_set(7, True)
+    var expected_size = bm.size()
+
+    # The implicit conversion consumes the bitmap and yields its underlying buffer.
+    var buf: Buffer[mut=True] = bm^
+    assert_equal(buf.size, expected_size)
+    # Bit 0 set and bit 7 set → byte 0 should be 0b10000001 = 129
+    assert_equal(buf.unsafe_get(0), 129)
 
 
 def main():

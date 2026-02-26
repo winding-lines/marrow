@@ -10,6 +10,14 @@ from testing import assert_equal
 from reflection import call_location
 
 
+fn buffer_from[dtype: DType](*values: Scalar[dtype]) -> Buffer:
+    """Test helper: build a Buffer from literal values."""
+    var buffer = Buffer.alloc[dtype](len(values))
+    for i in range(len(values)):
+        buffer.unsafe_set[dtype](i, values[i])
+    return buffer^
+
+
 @always_inline
 def assert_bitmap_set(
     bitmap: Bitmap, expected_true_pos: List[Int], message: StringLiteral
@@ -54,7 +62,7 @@ fn build_list_of_int[data_type: DataType]() raises -> ListArray:
 
     # Define the PrimitiveArrays.
     var value_offset = ArcPointer(
-        Buffer.from_values[DType.int32](0, 2, 4, 7, 7, 8, 10)
+        buffer_from[DType.int32](0, 2, 4, 7, 7, 8, 10)
     )
 
     var list_bitmap = ArcPointer(Bitmap.alloc(6))
@@ -97,7 +105,7 @@ fn build_list_of_list[data_type: DataType]() raises -> ListArray:
 
     # Define the PrimitiveArrays.
     var value_offset = ArcPointer(
-        Buffer.from_values[DType.int32](0, 2, 4, 7, 7, 8, 10)
+        buffer_from[DType.int32](0, 2, 4, 7, 7, 8, 10)
     )
 
     var list_bitmap = ArcPointer(Bitmap.alloc(6))
@@ -113,7 +121,7 @@ fn build_list_of_list[data_type: DataType]() raises -> ListArray:
     )
 
     # Now define the master array data.
-    var top_offsets = Buffer.from_values[DType.int32](0, 2, 5, 6)
+    var top_offsets = buffer_from[DType.int32](0, 2, 5, 6)
     var top_bitmap = ArcPointer(Bitmap.alloc(4))
     top_bitmap[].unsafe_range_set(0, 4, True)
     return ListArray(
@@ -130,12 +138,12 @@ fn build_list_of_list[data_type: DataType]() raises -> ListArray:
 
 def build_struct() -> StructArray:
     var int_data_a = Array.from_buffer[int32](
-        Buffer.from_values[DType.int32](1, 2, 3, 4, 5), 5
+        buffer_from[DType.int32](1, 2, 3, 4, 5), 5
     )
     var field_1 = Field("int_data_a", materialize[int32]())
 
     var int_data_b = Array.from_buffer[int32](
-        Buffer.from_values[DType.int32](10, 20, 30), 3
+        buffer_from[DType.int32](10, 20, 30), 3
     )
     var field_2 = Field("int_data_b", materialize[int32]())
     bitmap = Bitmap.alloc(2)

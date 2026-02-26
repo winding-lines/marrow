@@ -277,7 +277,7 @@ struct CArrowArray(Movable):
                     )
                 )
             var values = Bitmap.foreign_view(self.buffers[1], length, keeper)
-            buffers.append(ArcPointer(values^.as_buffer()))
+            buffers.append(ArcPointer[Buffer](values^))
         elif dtype.is_primitive():
             if self.n_buffers != 2:
                 raise Error(
