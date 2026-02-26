@@ -139,7 +139,7 @@ def test_boolean_array():
     assert_equal(len(a), 0)
     assert_equal(a.capacity, 0)
 
-    a.grow(3)
+    a.resize(3)
     assert_equal(len(a), 0)
     assert_equal(a.capacity, 3)
 
@@ -362,7 +362,7 @@ def test_string_builder():
     assert_equal(len(a), 0)
     assert_equal(a.capacity, 0)
 
-    a.grow(2)
+    a.resize(2)
     assert_equal(len(a), 0)
     assert_equal(a.capacity, 2)
 

@@ -95,7 +95,9 @@ struct Array(Copyable, Movable, Stringable):
         self.length = array.length
         self.offset = array.offset
         self.bitmap = rebind[ArcPointer[Bitmap]](array.bitmap)
-        self.buffers = [rebind[ArcPointer[Buffer]](array.values)]
+        var buffers = List[ArcPointer[Buffer]]()
+        buffers.append(rebind[ArcPointer[Buffer]](array.values))
+        self.buffers = buffers^
         self.children = []
 
     @implicit
@@ -215,7 +217,7 @@ struct BoolArray[*, mut: Bool = False](Movable, Sized):
     var offset: Int
     var capacity: Int
     var bitmap: ArcPointer[Bitmap[mut=Self.mut]]
-    var values: ArcPointer[Buffer[mut=Self.mut]]
+    var values: ArcPointer[Bitmap[mut=Self.mut]]
 
     fn __init__(out self: BoolArray, ref data: Array, offset: Int = 0) raises:
         if data.dtype != materialize[bool_]():
@@ -230,14 +232,14 @@ struct BoolArray[*, mut: Bool = False](Movable, Sized):
         self.length = data.length
         self.capacity = data.length
         self.bitmap = data.bitmap
-        self.values = data.buffers[0]
+        self.values = rebind[ArcPointer[Bitmap]](data.buffers[0])
 
     fn __init__(out self: BoolArray[mut=True], capacity: Int = 0, offset: Int = 0):
         self.capacity = capacity
         self.length = 0
         self.offset = offset
         self.bitmap = ArcPointer(Bitmap.alloc(capacity))
-        self.values = ArcPointer(Buffer.alloc((capacity + 7) // 8))
+        self.values = ArcPointer(Bitmap.alloc(capacity))
 
     fn __init__[
         other_mut: Bool, //
@@ -246,11 +248,11 @@ struct BoolArray[*, mut: Bool = False](Movable, Sized):
         self.offset = other.offset
         self.capacity = other.capacity
         self.bitmap = rebind[ArcPointer[Bitmap]](other.bitmap^)
-        self.values = rebind[ArcPointer[Buffer]](other.values^)
+        self.values = rebind[ArcPointer[Bitmap]](other.values^)
 
-    fn grow(mut self: BoolArray[mut=True], capacity: Int):
+    fn resize(mut self: BoolArray[mut=True], capacity: Int):
         self.bitmap[].resize(capacity)
-        self.values[].resize((capacity + 7) // 8)
+        self.values[].resize(capacity)
         self.capacity = capacity
 
     @always_inline
@@ -263,25 +265,12 @@ struct BoolArray[*, mut: Bool = False](Movable, Sized):
 
     @always_inline
     fn unsafe_get(self, index: Int) -> Bool:
-        var adjusted = index + self.offset
-        return Bool(
-            (self.values[].ptr[adjusted // 8] >> UInt8(adjusted % 8)) & 1
-        )
+        return self.values[].unsafe_get(index + self.offset)
 
     @always_inline
     fn unsafe_set(mut self: BoolArray[mut=True], index: Int, value: Bool):
         self.bitmap[].unsafe_set(index + self.offset, True)
-        var adjusted = index + self.offset
-        var byte_index = adjusted // 8
-        var bit_mask = UInt8(1 << (adjusted % 8))
-        if value:
-            self.values[].ptr[byte_index] = (
-                self.values[].ptr[byte_index] | bit_mask
-            )
-        else:
-            self.values[].ptr[byte_index] = (
-                self.values[].ptr[byte_index] & ~bit_mask
-            )
+        self.values[].unsafe_set(index + self.offset, value)
 
     @always_inline
     fn unsafe_append(mut self: BoolArray[mut=True], value: Bool):
@@ -318,20 +307,8 @@ struct BoolArray[*, mut: Bool = False](Movable, Sized):
         if self.length == self.capacity and self.offset == 0:
             return
 
-        var new_buf = Buffer.alloc((self.length + 7) // 8)
-        ref src = self.values[]
-        for i in range(self.length):
-            var src_idx = i + self.offset
-            var bit = Bool((src.ptr[src_idx // 8] >> UInt8(src_idx % 8)) & 1)
-            if bit:
-                new_buf.ptr[i // 8] = new_buf.ptr[i // 8] | UInt8(1 << (i % 8))
-
-        var new_bitmap = Bitmap.alloc(self.length)
-        for i in range(self.length):
-            new_bitmap.unsafe_set(i, self.bitmap[].unsafe_get(i + self.offset))
-
-        self.values = ArcPointer(new_buf^)
-        self.bitmap = ArcPointer(new_bitmap^)
+        self.values[].resize(self.length, self.offset)
+        self.bitmap[].resize(self.length, self.offset)
         self.offset = 0
         self.capacity = self.length
 
@@ -342,12 +319,12 @@ struct BoolArray[*, mut: Bool = False](Movable, Sized):
 
     fn append(mut self: BoolArray[mut=True], value: Bool):
         if self.length >= self.capacity:
-            self.grow(max(self.capacity * 2, self.length + 1))
+            self.resize(max(self.capacity * 2, self.length + 1))
         self.unsafe_append(value)
 
     fn extend(mut self: BoolArray[mut=True], values: List[Bool]):
         if self.__len__() + len(values) >= self.capacity:
-            self.grow(self.capacity + len(values))
+            self.resize(self.capacity + len(values))
         for value in values:
             self.unsafe_append(value)
 
@@ -409,7 +386,7 @@ struct PrimitiveArray[T: DataType, *, mut: Bool = False](Movable, Sized):
         self.bitmap = rebind[ArcPointer[Bitmap]](other.bitmap^)
         self.buffer = rebind[ArcPointer[Buffer]](other.buffer^)
 
-    fn grow(mut self: PrimitiveArray[Self.T, mut=True], capacity: Int):
+    fn resize(mut self: PrimitiveArray[Self.T, mut=True], capacity: Int):
         self.bitmap[].resize(capacity)
         self.buffer[].resize[Self.T.native](capacity)
         self.capacity = capacity
@@ -479,12 +456,12 @@ struct PrimitiveArray[T: DataType, *, mut: Bool = False](Movable, Sized):
 
     fn append(mut self: PrimitiveArray[Self.T, mut=True], value: Self.scalar):
         if self.length >= self.capacity:
-            self.grow(max(self.capacity * 2, self.length + 1))
+            self.resize(max(self.capacity * 2, self.length + 1))
         self.unsafe_append(value)
 
     fn extend(mut self: PrimitiveArray[Self.T, mut=True], values: List[self.scalar]):
         if self.__len__() + len(values) >= self.capacity:
-            self.grow(self.capacity + len(values))
+            self.resize(self.capacity + len(values))
         for value in values:
             self.unsafe_append(value)
 
@@ -521,6 +498,11 @@ struct StringArray[*, mut: Bool = False](Movable, Sized):
     var values: ArcPointer[Buffer[mut=Self.mut]]
 
     fn __init__(out self: StringArray, ref data: Array) raises:
+        """Construct an immutable StringArray from a generic Array.
+
+        Raises:
+            If the dtype is not string or the buffer count is wrong.
+        """
         if data.dtype != materialize[string]():
             raise Error(
                 "Unexpected dtype '"
@@ -538,6 +520,7 @@ struct StringArray[*, mut: Bool = False](Movable, Sized):
         self.values = data.buffers[1]
 
     fn __init__(out self: StringArray[mut=True], capacity: Int = 0):
+        """Create a mutable StringArray builder with the given capacity."""
         self.capacity = capacity
         self.length = 0
         self.offset = 0
@@ -549,6 +532,7 @@ struct StringArray[*, mut: Bool = False](Movable, Sized):
     fn __init__[
         other_mut: Bool, //
     ](out self: StringArray, deinit other: StringArray[mut=other_mut]):
+        """Convert a StringArray of any mutability to an immutable StringArray."""
         self.length = other.length
         self.offset = other.offset
         self.capacity = other.capacity
@@ -557,17 +541,21 @@ struct StringArray[*, mut: Bool = False](Movable, Sized):
         self.values = rebind[ArcPointer[Buffer]](other.values^)
 
     fn __len__(self) -> Int:
+        """Return the number of elements in the array."""
         return self.length
 
-    fn grow(mut self: StringArray[mut=True], capacity: Int):
+    fn resize(mut self: StringArray[mut=True], capacity: Int):
+        """Resize the bitmap and offsets buffers to the given capacity."""
         self.bitmap[].resize(capacity)
         self.offsets[].resize[DType.uint32](capacity + 1)
         self.capacity = capacity
 
     fn is_valid(self, index: Int) -> Bool:
+        """Return True if the element at the given index is not null."""
         return self.bitmap[].unsafe_get(index)
 
     fn unsafe_append(mut self: StringArray[mut=True], value: String):
+        """Append a string value without bounds checking."""
         var index = self.length
         var last_offset = self.offsets[].unsafe_get[DType.uint32](index)
         var next_offset = last_offset + UInt32(len(value))
@@ -582,6 +570,7 @@ struct StringArray[*, mut: Bool = False](Movable, Sized):
     fn unsafe_get[
         self_origin: Origin[mut=False], //
     ](ref [self_origin] self, index: UInt) -> StringSlice[self_origin]:
+        """Return a StringSlice for the element at the given index without bounds checking."""
         var offset_idx = Int(index) + self.offset
         var start_offset = self.offsets[].unsafe_get[DType.uint32](offset_idx)
         var end_offset = self.offsets[].unsafe_get[DType.uint32](offset_idx + 1)
@@ -592,6 +581,11 @@ struct StringArray[*, mut: Bool = False](Movable, Sized):
         return StringSlice[self_origin](ptr=ptr, length=length)
 
     fn unsafe_set(mut self: StringArray[mut=True], index: Int, value: String) raises:
+        """Replace the string at the given index in place.
+
+        Raises:
+            If the new string length differs from the existing one.
+        """
         var start_offset = self.offsets[].unsafe_get[DType.int32](index)
         var end_offset = self.offsets[].unsafe_get[DType.int32](index + 1)
         var length = Int(end_offset - start_offset)
@@ -609,6 +603,11 @@ struct StringArray[*, mut: Bool = False](Movable, Sized):
     fn __getitem__[
         self_origin: Origin[mut=False], //
     ](ref [self_origin] self, index: Int) raises -> StringSlice[self_origin]:
+        """Return a StringSlice for the element at the given index.
+
+        Raises:
+            If the index is out of bounds.
+        """
         if index < 0 or index >= self.length:
             raise Error(
                 "index "
@@ -630,19 +629,16 @@ struct StringArray[*, mut: Bool = False](Movable, Sized):
             self.offsets[].unsafe_get[DType.uint32](self.offset + self.length)
         )
 
-        var new_offsets = Buffer.alloc[DType.uint32](self.length + 1)
+        # Compact offsets, then rebase by subtracting start_byte
+        self.offsets[].offset = self.offset
+        self.offsets[].resize[DType.uint32](self.length + 1)
         for i in range(self.length + 1):
-            var off = Int(
-                self.offsets[].unsafe_get[DType.uint32](self.offset + i)
-            )
-            new_offsets.unsafe_set[DType.uint32](i, UInt32(off - start_byte))
+            var off = Int(self.offsets[].unsafe_get[DType.uint32](i))
+            self.offsets[].unsafe_set[DType.uint32](i, UInt32(off - start_byte))
 
         self.values[].offset = start_byte
         self.values[].resize(end_byte - start_byte)
-
         self.bitmap[].resize(self.length, self.offset)
-
-        self.offsets = ArcPointer(new_offsets^)
         self.offset = 0
         self.capacity = self.length
 
@@ -764,23 +760,9 @@ struct ListArray[*, mut: Bool = False](Movable, Sized):
         if self.length == self.capacity and self.offset == 0:
             return
 
-        var offsets = self.offsets
-        var bm = self.bitmap
-
-        var new_offsets = Buffer.alloc[DType.uint32](self.length + 1)
-        comptime u32_bytes = size_of[DType.uint32]()
-        memcpy(
-            dest=new_offsets.ptr,
-            src=offsets[].ptr + (self.offset * u32_bytes),
-            count=(self.length + 1) * u32_bytes,
-        )
-
-        var new_bitmap = Bitmap.alloc(self.length)
-        for i in range(self.length):
-            new_bitmap.unsafe_set(i, bm[].unsafe_get(i + self.offset))
-
-        self.offsets = ArcPointer(new_offsets^)
-        self.bitmap = ArcPointer(new_bitmap^)
+        self.offsets[].offset = self.offset
+        self.offsets[].resize[DType.uint32](self.length + 1)
+        self.bitmap[].resize(self.length, self.offset)
         self.offset = 0
         self.capacity = self.length
 
@@ -875,13 +857,7 @@ struct StructArray[*, mut: Bool = False](Movable, Sized):
         if self.length == self.capacity:
             return
 
-        var new_bitmap = Bitmap.alloc(self.length)
-        memcpy(
-            dest=new_bitmap.buffer.ptr,
-            src=self.bitmap[].buffer.ptr,
-            count=new_bitmap.size(),
-        )
-        self.bitmap = ArcPointer(new_bitmap^)
+        self.bitmap[].resize(self.length)
         self.capacity = self.length
 
     fn freeze(deinit self: StructArray[mut=True]) -> StructArray:
