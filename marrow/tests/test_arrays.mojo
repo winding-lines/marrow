@@ -348,9 +348,8 @@ def test_primitive_array_offset_with_validity():
 
 
 def test_primitive_array_nulls_with_offset():
-    """Test PrimitiveArray.nulls static method creates array with default offset.
-    """
-    var null_arr = Int64Array.nulls(5)
+    """Test nulls() creates an array with all null values and default offset."""
+    var null_arr = nulls[int64](5)
     assert_equal(null_arr.offset, 0)
 
     # All elements should be invalid (null)
@@ -507,6 +506,296 @@ def test_combine_chunked_array():
     assert_equal(combined_array.dtype, materialize[int8]())
     # Ensure that the last element of the last buffer has the expected value.
     assert_equal(combined_array.buffers[1][].unsafe_get(1), 1)
+
+
+def test_primitive_freeze_zero_copy():
+    """freeze() on an exact-size array moves ArcPointers without allocation."""
+    var a = Int64Array(capacity=3)
+    a.unsafe_append(10)
+    a.unsafe_append(20)
+    a.unsafe_append(30)
+    var frozen = a^.freeze()
+    assert_equal(frozen.length, 3)
+    assert_equal(frozen.capacity, 3)
+    assert_equal(frozen.offset, 0)
+    assert_equal(frozen.unsafe_get(0), 10)
+    assert_equal(frozen.unsafe_get(1), 20)
+    assert_equal(frozen.unsafe_get(2), 30)
+
+
+def test_primitive_freeze_shrinks():
+    """freeze() on an over-allocated array trims capacity to length."""
+    var a = Int64Array(capacity=100)
+    a.unsafe_append(42)
+    a.unsafe_append(99)
+    var frozen = a^.freeze()
+    assert_equal(frozen.length, 2)
+    assert_equal(frozen.capacity, 2)
+    assert_equal(frozen.unsafe_get(0), 42)
+    assert_equal(frozen.unsafe_get(1), 99)
+
+
+def test_primitive_freeze_via_append():
+    """freeze() works on an array built with append() (auto-grow capacity)."""
+    var a = Int64Array()
+    a.append(1)
+    a.append(2)
+    a.append(3)
+    var frozen = a^.freeze()
+    assert_equal(frozen.length, 3)
+    assert_equal(frozen.capacity, 3)
+    assert_equal(frozen.unsafe_get(0), 1)
+    assert_equal(frozen.unsafe_get(2), 3)
+
+
+def test_primitive_freeze_preserves_nulls():
+    """freeze() preserves null validity information."""
+    var a = Int64Array(capacity=3)
+    a.unsafe_append(1)
+    a.unsafe_append_null()
+    a.unsafe_append(3)
+    var frozen = a^.freeze()
+    assert_equal(frozen.length, 3)
+    assert_true(frozen.is_valid(0))
+    assert_false(frozen.is_valid(1))
+    assert_true(frozen.is_valid(2))
+
+
+def test_primitive_freeze_converts_to_array():
+    """A frozen PrimitiveArray still converts to the Array base implicitly."""
+    var a = Int64Array()
+    a.append(7)
+    a.append(8)
+    var frozen = a^.freeze()
+    var base: Array = frozen
+    assert_equal(base.length, 2)
+    assert_equal(base.dtype, materialize[int64]())
+
+
+def test_primitive_freeze_with_offset():
+    """freeze() with non-zero offset normalizes the data (offset becomes 0)."""
+    var a = Int64Array(capacity=5)
+    a.unsafe_append(0)
+    a.unsafe_append(10)
+    a.unsafe_append(20)
+    a.unsafe_append(30)
+    a.unsafe_append(40)
+    var data = Array(
+        dtype=materialize[int64](),
+        length=3,
+        bitmap=a.bitmap,
+        buffers=[a.buffer],
+        children=[],
+        offset=1,
+    )
+    var sliced = Int64Array(data)
+    var frozen = sliced^.freeze()
+    assert_equal(frozen.offset, 0)
+    assert_equal(frozen.length, 3)
+    assert_equal(frozen.unsafe_get(0), 10)
+    assert_equal(frozen.unsafe_get(1), 20)
+    assert_equal(frozen.unsafe_get(2), 30)
+
+
+def test_getitem_bounds_check():
+    """__getitem__ raises on out-of-bounds access."""
+    var a = Int64Array()
+    a.append(1)
+    a.append(2)
+    try:
+        _ = a[5]
+        assert_true(False, "should have raised")
+    except:
+        pass
+    try:
+        _ = a[-1]
+        assert_true(False, "should have raised")
+    except:
+        pass
+    assert_equal(a[0], 1)
+    assert_equal(a[1], 2)
+
+
+def test_setitem_bounds_check():
+    """__setitem__ raises on out-of-bounds and works in bounds."""
+    var a = Int64Array()
+    a.append(10)
+    a[0] = 99
+    assert_equal(a[0], 99)
+    try:
+        a[1] = 0
+        assert_true(False, "should have raised")
+    except:
+        pass
+
+
+def test_string_freeze_zero_copy():
+    """freeze() on an exact-size StringArray moves ArcPointers."""
+    var s = StringArray(capacity=2)
+    s.unsafe_append("hello")
+    s.unsafe_append("world")
+    var frozen = s^.freeze()
+    assert_equal(frozen.length, 2)
+    assert_equal(frozen.capacity, 2)
+    assert_equal(String(frozen.unsafe_get(0)), "hello")
+    assert_equal(String(frozen.unsafe_get(1)), "world")
+
+
+def test_string_freeze_shrinks():
+    """freeze() on an over-allocated StringArray trims to exact size."""
+    var s = StringArray(capacity=100)
+    s.unsafe_append("hi")
+    var frozen = s^.freeze()
+    assert_equal(frozen.length, 1)
+    assert_equal(frozen.capacity, 1)
+    assert_equal(String(frozen.unsafe_get(0)), "hi")
+
+
+def test_string_getitem_bounds_check():
+    """StringArray __getitem__ raises on out-of-bounds."""
+    var s = StringArray()
+    s.unsafe_append("a")
+    assert_equal(String(s[0]), "a")
+    try:
+        _ = s[1]
+        assert_true(False, "should have raised")
+    except:
+        pass
+
+
+def test_primitive_shrink_to_fit_with_offset():
+    """shrink_to_fit with non-zero offset copies the correct data slice."""
+    var a = Int64Array(capacity=8)
+    a.unsafe_append(0)
+    a.unsafe_append(10)
+    a.unsafe_append(20)
+    a.unsafe_append(30)
+    a.unsafe_append(40)
+    a.unsafe_append(50)
+    a.unsafe_append(60)
+    a.unsafe_append(70)
+
+    # Simulate a slice: elements [3, 4, 5, 6] = [30, 40, 50, 60]
+    a.offset = 3
+    a.length = 4
+
+    a.shrink_to_fit()
+
+    assert_equal(a.offset, 0)
+    assert_equal(a.length, 4)
+    assert_equal(a.capacity, 4)
+    assert_equal(a.unsafe_get(0), 30)
+    assert_equal(a.unsafe_get(1), 40)
+    assert_equal(a.unsafe_get(2), 50)
+    assert_equal(a.unsafe_get(3), 60)
+    for i in range(4):
+        assert_true(a.is_valid(i))
+
+
+def test_primitive_shrink_to_fit_preserves_nulls():
+    """shrink_to_fit with offset preserves the null bitmap correctly."""
+    var a = Int32Array(capacity=6)
+    a.unsafe_append(0)
+    a.unsafe_append_null()
+    a.unsafe_append(20)
+    a.unsafe_append_null()
+    a.unsafe_append(40)
+    a.unsafe_append(50)
+    # values: [0, null, 20, null, 40, 50], take slice [1..4] = [null, 20, null]
+    a.offset = 1
+    a.length = 3
+
+    a.shrink_to_fit()
+
+    assert_equal(a.offset, 0)
+    assert_equal(a.length, 3)
+    assert_false(a.is_valid(0))
+    assert_true(a.is_valid(1))
+    assert_false(a.is_valid(2))
+    assert_equal(a.unsafe_get(1), 20)
+
+
+def test_string_shrink_to_fit_with_offset():
+    """shrink_to_fit with non-zero offset extracts the correct string slice."""
+    var s = StringArray()
+    s.unsafe_append("alpha")
+    s.unsafe_append("beta")
+    s.unsafe_append("gamma")
+    s.unsafe_append("delta")
+    s.unsafe_append("epsilon")
+
+    # Simulate a slice: elements [2, 3, 4] = ["gamma", "delta", "epsilon"]
+    s.offset = 2
+    s.length = 3
+    assert_equal(String(s.unsafe_get(0)), "gamma")
+
+    s.shrink_to_fit()
+
+    assert_equal(s.offset, 0)
+    assert_equal(s.length, 3)
+    assert_equal(s.capacity, 3)
+    assert_equal(String(s.unsafe_get(0)), "gamma")
+    assert_equal(String(s.unsafe_get(1)), "delta")
+    assert_equal(String(s.unsafe_get(2)), "epsilon")
+
+
+def test_list_shrink_to_fit_with_offset():
+    """shrink_to_fit with non-zero offset copies the correct offsets slice."""
+    var ints = array[int64]([1, 2, 3])
+    var lists = ListArray.from_values(Array(ints^), capacity=5)
+    # Append 4 more empty list entries so length=5, capacity=5
+    for _ in range(4):
+        lists.unsafe_append(True)
+    assert_equal(len(lists), 5)
+
+    # Simulate a slice: elements [1, 2, 3] (offset=1, length=3)
+    lists.offset = 1
+    lists.length = 3
+
+    lists.shrink_to_fit()
+
+    assert_equal(lists.offset, 0)
+    assert_equal(lists.length, 3)
+    assert_equal(lists.capacity, 3)
+    # The raw offsets buffer should hold the 4 values from original positions 1..4
+    assert_equal(
+        lists.offsets[].unsafe_get[DType.uint32](0),
+        UInt32(3),  # original offsets[1] = 3 (first element has 3 child items)
+    )
+    assert_equal(
+        lists.offsets[].unsafe_get[DType.uint32](1),
+        UInt32(3),  # original offsets[2] = 3 (empty list)
+    )
+    assert_equal(
+        lists.offsets[].unsafe_get[DType.uint32](3),
+        UInt32(3),  # original offsets[4] = 3 (empty list)
+    )
+
+
+fn test_mut_parameter_compile_time() raises:
+    """Compile-time checks for the mut type parameter on all typed arrays."""
+    # PrimitiveArray: mutable by default, frozen when mut=False
+    comptime assert PrimitiveArray[int64].mut
+    comptime assert not PrimitiveArray[int64, False].mut
+
+    # StringArray
+    comptime assert StringArray[].mut
+    comptime assert not StringArray[False].mut
+
+    # ListArray
+    comptime assert ListArray[].mut
+    comptime assert not ListArray[False].mut
+
+    # StructArray
+    comptime assert StructArray[].mut
+    comptime assert not StructArray[False].mut
+
+    # freeze() returns the same type with mut=False; the type annotation is itself
+    # a compile-time check — if freeze() returned the wrong type, this won't compile.
+    var a = Int64Array()
+    a.append(1)
+    var frozen: PrimitiveArray[int64, False] = a^.freeze()
+    comptime assert not frozen.mut
 
 
 def main():

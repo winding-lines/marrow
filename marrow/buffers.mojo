@@ -20,7 +20,9 @@ comptime simd_width = simd_byte_width()
 
 comptime simd_widths = (simd_width, simd_width // 2, 1)
 
-
+# TODO(kszucs): add mut comptime parameter and probably an owns based on which use either ownedpointer or plain pointer but rather not unsafepointer
+# TODO(kszucs): remove bool support from buffer, clearly separate buffer and bitmap, they could be converted between each other but they have different semantics and usage patterns. Buffer should be a simple wrapper around a memory region, while Bitmap should provide bitmap specific operations on top of a buffer.
+# TODO(kszucs): parametrize its mutability
 struct Buffer(Movable):
     var ptr: UnsafePointer[UInt8, MutAnyOrigin]
     var size: Int
