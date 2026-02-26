@@ -45,7 +45,9 @@ def test_drop_nulls_empty():
 
 
 def test_drop_nulls_untyped():
-    var result = drop_nulls(array[uint8]([None, 1, None, 3, None, 5, None, 7, None, 9]))
+    var result = drop_nulls(
+        array[uint8]([None, 1, None, 3, None, 5, None, 7, None, 9])
+    )
     assert_equal(result.length, 5)
 
 

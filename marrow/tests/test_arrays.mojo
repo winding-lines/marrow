@@ -258,7 +258,9 @@ def test_drop_null() -> None:
     """Test the drop null function via the compute module."""
     from marrow.compute.filter import drop_nulls
 
-    var primitive_array = array[uint8]([None, 1, None, 3, None, 5, None, 7, None, 9])
+    var primitive_array = array[uint8](
+        [None, 1, None, 3, None, 5, None, 7, None, 9]
+    )
     # Check the setup.
     assert_equal(primitive_array.null_count(), 5)
     assert_bitmap_set(primitive_array.bitmap[], [1, 3, 5, 7, 9], "check setup")

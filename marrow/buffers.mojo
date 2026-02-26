@@ -5,18 +5,15 @@ from memory import (
 )
 from sys.info import simd_byte_width
 from sys import size_of
-from marrow.dtypes import dynamic_size_of
 import math
 from bit import pop_count, count_trailing_zeros
 
 
-fn _required_bytes(length: Int, T: DType) -> Int:
-    var size: Int
-    if T == DType.bool:
-        size = math.ceildiv(length, 8)
-    else:
-        size = length * dynamic_size_of(T)
-    return math.align_up(size, 64)
+fn _required_bytes[T: DType](length: Int) -> Int:
+    var n = (
+        math.ceildiv(length, 8) if T == DType.bool else length * size_of[T]()
+    )
+    return math.align_up(n, 64)
 
 
 comptime simd_width = simd_byte_width()
@@ -51,7 +48,7 @@ struct Buffer(Movable):
 
     @staticmethod
     fn alloc[I: Intable, //, T: DType = DType.uint8](length: I) -> Buffer:
-        var size = _required_bytes(Int(length), T)
+        var size = _required_bytes[T](Int(length))
         var ptr = alloc[UInt8](size, alignment=64)
         memset_zero(ptr, size)
         return Buffer(ptr, size)
@@ -68,14 +65,11 @@ struct Buffer(Movable):
 
     @staticmethod
     fn view[
-        I: Intable, //
-    ](
-        ptr: UnsafePointer[NoneType, MutAnyOrigin],
-        length: I,
-        dtype: DType = DType.uint8,
-    ) raises -> Buffer:
-        var size = _required_bytes(Int(length), dtype)
-        return Buffer(ptr.bitcast[UInt8](), size, owns=False)
+        I: Intable, //, T: DType = DType.uint8
+    ](ptr: UnsafePointer[NoneType, MutAnyOrigin], length: I,) raises -> Buffer:
+        return Buffer(
+            ptr.bitcast[UInt8](), _required_bytes[T](Int(length)), owns=False
+        )
 
     @always_inline
     fn get_ptr_at(self, index: Int) -> UnsafePointer[UInt8, MutAnyOrigin]:
@@ -345,7 +339,7 @@ struct Bitmap(Movable, Representable, Stringable, Writable):
             start: The starting index in the destination array.
             length: The number of elements to copy from the source array.
         """
-        var desired_size = _required_bytes(start + length, DType.bool)
+        var desired_size = _required_bytes[DType.bool](start + length)
         self.buffer.grow[DType.bool](desired_size)
 
         for i in range(length):

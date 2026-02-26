@@ -567,7 +567,8 @@ fn array[T: DataType]() -> PrimitiveArray[T]:
 
 
 fn array[T: DataType](values: List[Optional[Int]]) -> PrimitiveArray[T]:
-    """Create a primitive array from a list of values, where None becomes null."""
+    """Create a primitive array from a list of values, where None becomes null.
+    """
     var a = PrimitiveArray[T](len(values))
     for value in values:
         if value:

@@ -243,7 +243,7 @@ struct CArrowArray(Copyable):
         var bitmap: ArcPointer[Bitmap]
         if self.buffers[0]:
             bitmap = ArcPointer(
-                Bitmap(Buffer.view(self.buffers[0], self.length, DType.bool))
+                Bitmap(Buffer.view[DType.bool](self.buffers[0], self.length))
             )
         else:
             # bitmaps are allowed to be nullptrs by the specification, in this
@@ -253,19 +253,19 @@ struct CArrowArray(Copyable):
 
         var buffers = List[ArcPointer[Buffer]]()
         if dtype.is_numeric() or dtype == materialize[bool_]():
-            var buffer = Buffer.view(self.buffers[1], self.length, dtype.native)
+            var buffer = Buffer.view[DType.uint8](self.buffers[1], self.length)
             buffers.append(ArcPointer(buffer^))
         elif dtype == materialize[string]():
-            var offsets = Buffer.view(
-                self.buffers[1], self.length + 1, DType.uint32
+            var offsets = Buffer.view[DType.uint32](
+                self.buffers[1], self.length + 1
             )
             var values_size = Int(offsets.unsafe_get(Int(self.length)))
-            var values = Buffer.view(self.buffers[2], values_size, DType.uint8)
+            var values = Buffer.view[DType.uint8](self.buffers[2], values_size)
             buffers.append(ArcPointer(offsets^))
             buffers.append(ArcPointer(values^))
         elif dtype.is_list():
-            var offsets = Buffer.view(
-                self.buffers[1], self.length + 1, DType.uint32
+            var offsets = Buffer.view[DType.uint32](
+                self.buffers[1], self.length + 1
             )
             buffers.append(ArcPointer(offsets^))
         elif dtype.is_struct():

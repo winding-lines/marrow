@@ -10,7 +10,6 @@ from testing import assert_equal
 from reflection import call_location
 
 
-
 @always_inline
 def assert_bitmap_set(
     bitmap: Bitmap, expected_true_pos: List[Int], message: StringLiteral
