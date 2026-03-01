@@ -332,20 +332,11 @@ def test_bitmap_to_buffer_implicit():
     assert_equal(buf.unsafe_get(0), 129)
 
 
-def test_cpu_buffer_is_cpu():
-    # BufferBuilder allocated via MemoryManager.cpu_alloc is CPU
+def test_buffer_no_device():
+    # CPU-allocated buffers have no device buffer
     var buf = BufferBuilder.alloc(10)
-    assert_true(buf.dealloc.value()[].is_cpu())
-
-    # Freezing preserves CPU device info
     var frozen = buf^.freeze()
-    assert_true(frozen.is_cpu())
-
-
-def test_bitmap_is_cpu():
-    var bm = BitmapBuilder.alloc(16)
-    var frozen = bm^.freeze()
-    assert_true(frozen.buffer.is_cpu())
+    assert_true(not frozen.has_device())
 
 
 def main():

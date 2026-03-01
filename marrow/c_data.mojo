@@ -1,7 +1,7 @@
 from ffi import external_call, c_char
 from memory import ArcPointer, memcpy
 from sys import size_of
-from .buffers import MemoryRegion, MemoryManager, BitmapBuilder
+from .buffers import Allocation, BitmapBuilder
 
 import math
 from python import Python, PythonObject
@@ -237,7 +237,7 @@ struct CArrowArray(Movable):
         return ptr.take_pointee()
 
     fn _to_array(
-        self, dtype: DataType, keeper: ArcPointer[MemoryRegion]
+        self, dtype: DataType, keeper: ArcPointer[Allocation]
     ) raises -> Array:
         """Build an Array from this CArrowArray, all buffers sharing one keeper.
 
@@ -375,14 +375,14 @@ struct CArrowArray(Movable):
         """Convert to an Array, taking ownership of the C struct.
 
         The CArrowArray is moved onto the heap and wrapped in a
-        MemoryRegion.  Every Buffer / Bitmap view shares the same
-        ArcPointer[MemoryRegion], so the C release callback fires
+        Allocation.  Every Buffer / Bitmap view shares the same
+        ArcPointer[Allocation], so the C release callback fires
         automatically when the last buffer referencing this import is dropped.
         """
         var heap_c = alloc[CArrowArray](1)
         heap_c.init_pointee_move(self^)
         var keeper = ArcPointer(
-            MemoryRegion(
+            Allocation(
                 ptr=heap_c.bitcast[UInt8](),
                 release=_release_c_array,
             )

@@ -12,6 +12,7 @@ test_gpu = {cmd = "bash -c 'for f in $(find . -name test_gpu_\\*.mojo -type f -n
 test_python = {cmd = "pytest -s -v python/tests", depends-on=["build_python"]}
 test = {depends-on = ["test_mojo", "test_python"]}
 bench = {cmd = "mojo build -I . -O3 marrow/compute/tests/bench_arithmetic.mojo -o .bench && ./.bench && rm -f .bench"}
+bench_gpu = {cmd = "mojo build -I . -O3 marrow/compute/tests/bench_gpu_arithmetic.mojo -o .bench_gpu && ./.bench_gpu && rm -f .bench_gpu"}
 fmt_mojo = {cmd = "mojo format marrow"}
 fmt_python = {cmd = "ruff format python" }
 fmt = {depends-on = ["fmt_mojo", "fmt_python"]}

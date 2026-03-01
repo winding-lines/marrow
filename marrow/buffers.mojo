@@ -12,7 +12,7 @@ differs.
 
 Ownership
 ---------
-Every Buffer/BufferBuilder holds an `ArcPointer[MemoryRegion]` that manages
+Every Buffer/BufferBuilder holds an `ArcPointer[Allocation]` that manages
 the lifetime of its memory. For Mojo-allocated buffers, the release callback
 frees the raw pointer. For foreign memory (e.g. Arrow C Data Interface),
 the release callback invokes the producer's cleanup.
@@ -35,6 +35,7 @@ from sys.info import simd_byte_width
 from sys import size_of
 import math
 from bit import pop_count, count_trailing_zeros
+from gpu.host import DeviceBuffer, DeviceContext
 
 
 fn dynamic_size_of(dtype: DType) -> Int:
@@ -71,14 +72,14 @@ comptime simd_widths = (simd_width, simd_width // 2, 1)
 
 
 # ---------------------------------------------------------------------------
-# MemoryRegion — owns a memory region with device awareness
+# Allocation — owns a memory region with a release callback
 # ---------------------------------------------------------------------------
 
 
-struct MemoryRegion(Movable):
-    """Owns a memory region with a typed release callback and device info.
+struct Allocation(Movable):
+    """Owns a memory allocation with a typed release callback.
 
-    When the last ArcPointer[MemoryRegion] is dropped, __del__ fires and
+    When the last ArcPointer[Allocation] is dropped, __del__ fires and
     invokes the release function — e.g. freeing CPU memory or invoking the
     Arrow C Data Interface release callback.
     """
@@ -97,37 +98,10 @@ struct MemoryRegion(Movable):
     fn __del__(deinit self):
         self.release(self.ptr)
 
-    fn is_cpu(self) -> Bool:
-        return True
 
-
-# ---------------------------------------------------------------------------
-# MemoryManager — allocation and deallocation namespace
-# ---------------------------------------------------------------------------
-
-
-struct MemoryManager:
-    """Central memory management: allocation and deallocation.
-
-    All methods are static — MemoryManager is a namespace, not instantiated.
-    """
-
-    @staticmethod
-    fn cpu_release(ptr: UnsafePointer[UInt8, MutAnyOrigin]) -> None:
-        """Release callback for Mojo-allocated CPU buffers."""
-        ptr.free()
-
-    @staticmethod
-    fn cpu_alloc(size: Int) -> BufferBuilder:
-        """Allocate a 64-byte-aligned CPU buffer of `size` bytes."""
-        var aligned_size = math.align_up(size, 64)
-        var ptr = alloc[UInt8](aligned_size, alignment=64)
-        memset_zero(ptr, aligned_size)
-        var result = BufferBuilder(ptr, aligned_size)
-        result.dealloc = ArcPointer(
-            MemoryRegion(ptr=ptr, release=MemoryManager.cpu_release)
-        )
-        return result^
+fn _cpu_release(ptr: UnsafePointer[UInt8, MutAnyOrigin]) -> None:
+    """Release callback for Mojo-allocated CPU buffers."""
+    ptr.free()
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +119,8 @@ struct BufferBuilder(Movable):
     var ptr: UnsafePointer[UInt8, MutExternalOrigin]
     var size: Int
     var offset: Int
-    var dealloc: Optional[ArcPointer[MemoryRegion]]
+    var dealloc: Optional[ArcPointer[Allocation]]
+    var device: Optional[DeviceBuffer[DType.uint8]]
 
     fn __init__(
         out self,
@@ -157,19 +132,26 @@ struct BufferBuilder(Movable):
         self.size = size
         self.offset = offset
         self.dealloc = None
+        self.device = None
 
     @staticmethod
     fn alloc[
         I: Intable, //, T: DType = DType.uint8
     ](length: I) -> BufferBuilder:
-        """Allocate a buffer for `length` elements of type T."""
-        return MemoryManager.cpu_alloc(Int(length) * size_of[T]())
+        """Allocate a 64-byte-aligned buffer for `length` elements of type T."""
+        var byte_size = math.align_up(Int(length) * size_of[T](), 64)
+        var ptr = alloc[UInt8](byte_size, alignment=64)
+        memset_zero(ptr, byte_size)
+        var result = BufferBuilder(ptr, byte_size)
+        result.dealloc = ArcPointer(Allocation(ptr=ptr, release=_cpu_release))
+        return result^
 
     fn freeze(deinit self) -> Buffer:
         """Consume the mutable builder and return an immutable Buffer."""
         var ptr = rebind[UnsafePointer[UInt8, ImmutExternalOrigin]](self.ptr)
         var result = Buffer(ptr, self.size, self.offset)
         result.dealloc = self.dealloc^
+        result.device = self.device^
         return result^
 
     fn resize[I: Intable, //, T: DType = DType.uint8](mut self, length: I):
@@ -215,12 +197,17 @@ struct Buffer(ImplicitlyCopyable, Movable):
     Buffers are Copyable with O(1) shared semantics: copying bumps the
     internal ArcPointer ref count without copying any data. The last copy
     to be dropped triggers the release callback that frees the memory.
+
+    Data can reside on host (CPU), device (GPU), or both. Use `to_device()`
+    to upload and `to_host()` to download. Since buffers are immutable,
+    both copies are always in sync.
     """
 
     var ptr: UnsafePointer[UInt8, ImmutExternalOrigin]
     var size: Int
     var offset: Int
-    var dealloc: Optional[ArcPointer[MemoryRegion]]
+    var dealloc: Optional[ArcPointer[Allocation]]
+    var device: Optional[DeviceBuffer[DType.uint8]]
 
     fn __init__(
         out self,
@@ -232,12 +219,14 @@ struct Buffer(ImplicitlyCopyable, Movable):
         self.size = size
         self.offset = offset
         self.dealloc = None
+        self.device = None
 
     fn __init__(out self, *, copy: Self):
         self.ptr = copy.ptr
         self.size = copy.size
         self.offset = copy.offset
         self.dealloc = copy.dealloc
+        self.device = copy.device
 
     @implicit
     fn __init__(out self, var bitmap: Bitmap):
@@ -246,6 +235,7 @@ struct Buffer(ImplicitlyCopyable, Movable):
         self.size = bitmap.buffer.size
         self.offset = bitmap.buffer.offset
         self.dealloc = None
+        self.device = bitmap.buffer.device
         swap(self.dealloc, bitmap.buffer.dealloc)
 
     @staticmethod
@@ -255,11 +245,11 @@ struct Buffer(ImplicitlyCopyable, Movable):
         ptr: UnsafePointer[NoneType, MutAnyOrigin],
         length: I,
         dtype: DType,
-        owner: ArcPointer[MemoryRegion],
+        owner: ArcPointer[Allocation],
     ) -> Buffer:
         """Create an immutable view into foreign memory.
 
-        The caller passes an ArcPointer[MemoryRegion] that keeps the
+        The caller passes an ArcPointer[Allocation] that keeps the
         source allocation alive for as long as any buffer (or bitmap) derived
         from it exists.  When the last such buffer is dropped the owner's
         release callback fires automatically.
@@ -276,11 +266,32 @@ struct Buffer(ImplicitlyCopyable, Movable):
     fn __del__(deinit self):
         pass
 
-    fn is_cpu(self) -> Bool:
-        """Return True if this buffer's memory lives on the CPU."""
+    @always_inline
+    fn has_device(self) -> Bool:
+        """Return True if the buffer has a device (GPU) copy."""
+        return Bool(self.device)
+
+    fn to_device(self, ctx: DeviceContext) raises -> Buffer:
+        """Upload buffer data to the GPU. Returns self if already on device."""
+        if self.device:
+            return self
+        var dev = ctx.enqueue_create_buffer[DType.uint8](self.size)
+        ctx.enqueue_copy(dev, self.ptr + self.offset)
+        var result = Buffer(copy=self)
+        result.device = dev
+        result.offset = 0
+        return result^
+
+    fn to_host(self, ctx: DeviceContext) raises -> Buffer:
+        """Download buffer data from the GPU. Returns self if already on host."""
         if self.dealloc:
-            return self.dealloc.value()[].is_cpu()
-        return True
+            return self
+        var builder = BufferBuilder.alloc(self.size)
+        ctx.enqueue_copy(builder.ptr, self.device.value())
+        ctx.synchronize()
+        var result = builder^.freeze()
+        result.device = self.device
+        return result^
 
     @always_inline
     fn length[T: DType = DType.uint8](self) -> Int:
@@ -537,7 +548,7 @@ struct Bitmap(ImplicitlyCopyable, Movable, Stringable):
     ](
         ptr: UnsafePointer[NoneType, MutAnyOrigin],
         length: I,
-        owner: ArcPointer[MemoryRegion],
+        owner: ArcPointer[Allocation],
     ) -> Bitmap:
         """Create an immutable view into foreign memory."""
         var byte_length = math.ceildiv(Int(length), 8)
@@ -576,6 +587,18 @@ struct Bitmap(ImplicitlyCopyable, Movable, Stringable):
     @always_inline
     fn size(self) -> Int:
         return self.buffer.size
+
+    fn has_device(self) -> Bool:
+        """Return True if the bitmap has a device (GPU) copy."""
+        return self.buffer.has_device()
+
+    fn to_device(self, ctx: DeviceContext) raises -> Bitmap:
+        """Upload bitmap data to the GPU."""
+        return Bitmap(self.buffer.to_device(ctx), offset=0)
+
+    fn to_host(self, ctx: DeviceContext) raises -> Bitmap:
+        """Download bitmap data from the GPU."""
+        return Bitmap(self.buffer.to_host(ctx), self.offset)
 
     fn bit_count(self) -> Int:
         """The number of bits with value 1 in the Bitmap."""

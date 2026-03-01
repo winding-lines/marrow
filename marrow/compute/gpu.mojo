@@ -8,12 +8,13 @@ CUDA toolkit on Linux).  It is NOT imported by default from
 """
 
 import math
+from sys import size_of
 
 from gpu import global_idx
-from gpu.host import DeviceContext
+from gpu.host import DeviceBuffer, DeviceContext
 
 from marrow.arrays import PrimitiveArray, Array
-from marrow.builders import PrimitiveBuilder
+from marrow.buffers import Buffer, BitmapBuilder
 from marrow.dtypes import DataType, all_numeric_dtypes, materialize
 from .arithmetic import _add, _add_no_nulls
 from .kernels import binary
@@ -46,28 +47,41 @@ fn _add_gpu[
     length: Int,
     ctx: DeviceContext,
 ) raises -> PrimitiveArray[T]:
-    """GPU-accelerated add: copies to device, runs kernel, copies back."""
+    """GPU-accelerated add, reusing device buffers when already resident."""
     comptime native = T.native
     comptime BLOCK_SIZE = 256
 
-    # Allocate device buffers
-    var lhs_dev = ctx.enqueue_create_buffer[native](length)
-    var rhs_dev = ctx.enqueue_create_buffer[native](length)
-    var out_dev = ctx.enqueue_create_buffer[native](length)
+    # Reuse device buffers if already on GPU, otherwise upload
+    var lhs_dev: DeviceBuffer[native]
+    var rhs_dev: DeviceBuffer[native]
+    if left.buffer.has_device():
+        lhs_dev = left.buffer.device.value().create_sub_buffer[native](
+            0, length
+        )
+    else:
+        lhs_dev = ctx.enqueue_create_buffer[native](length)
+        var lhs_ptr = (
+            left.buffer.ptr.bitcast[Scalar[native]]()
+            + left.offset
+            + left.buffer.offset
+        )
+        ctx.enqueue_copy(lhs_dev, lhs_ptr)
 
-    # Copy CPU → device
-    var lhs_ptr = (
-        left.buffer.ptr.bitcast[Scalar[native]]()
-        + left.offset
-        + left.buffer.offset
-    )
-    var rhs_ptr = (
-        right.buffer.ptr.bitcast[Scalar[native]]()
-        + right.offset
-        + right.buffer.offset
-    )
-    ctx.enqueue_copy(lhs_dev, lhs_ptr)
-    ctx.enqueue_copy(rhs_dev, rhs_ptr)
+    if right.buffer.has_device():
+        rhs_dev = right.buffer.device.value().create_sub_buffer[native](
+            0, length
+        )
+    else:
+        rhs_dev = ctx.enqueue_create_buffer[native](length)
+        var rhs_ptr = (
+            right.buffer.ptr.bitcast[Scalar[native]]()
+            + right.offset
+            + right.buffer.offset
+        )
+        ctx.enqueue_copy(rhs_dev, rhs_ptr)
+
+    # Allocate output on device
+    var out_dev = ctx.enqueue_create_buffer[native](length)
 
     # Launch kernel
     var num_blocks = math.ceildiv(length, BLOCK_SIZE)
@@ -81,15 +95,17 @@ fn _add_gpu[
         block_dim=BLOCK_SIZE,
     )
 
-    # Copy result device → CPU
-    var result = PrimitiveBuilder[T](length)
-    result.bitmap.unsafe_range_set(0, length, True)
-    var out_ptr = result.buffer.ptr.bitcast[Scalar[native]]()
-    ctx.enqueue_copy(out_ptr, out_dev)
-    ctx.synchronize()
-
-    result.length = length
-    return result^.freeze()
+    # Build device-only result (no host copy — call .to_host(ctx) to read)
+    var bm = BitmapBuilder.alloc(length)
+    bm.unsafe_range_set(0, length, True)
+    var device_bytes = length * size_of[native]()
+    var buf = Buffer(
+        UnsafePointer[UInt8, ImmutExternalOrigin](), device_bytes
+    )
+    buf.device = out_dev.create_sub_buffer[DType.uint8](0, device_bytes)
+    return PrimitiveArray[T](
+        length=length, offset=0, bitmap=bm^.freeze(), buffer=buf^
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -106,8 +122,8 @@ fn add[
 ) raises -> PrimitiveArray[T]:
     """Element-wise addition with optional GPU acceleration.
 
-    When a DeviceContext is provided, data is copied to the device,
-    the kernel runs on the GPU, and the result is copied back to CPU.
+    When a DeviceContext is provided, the result stays on device (GPU).
+    Call `.to_host(ctx)` on the result to download to CPU memory.
     Without a context, dispatches to the SIMD-optimized CPU path.
 
     Args:
@@ -117,7 +133,8 @@ fn add[
 
     Returns:
         A new PrimitiveArray where result[i] = left[i] + right[i].
-        Null if either input is null at that position (CPU fallback).
+        With GPU: result is device-resident; chain ops or call to_host().
+        Without GPU: result is host-resident and immediately readable.
     """
     if len(left) != len(right):
         raise Error(

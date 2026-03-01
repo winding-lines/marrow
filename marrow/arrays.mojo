@@ -9,12 +9,13 @@ Array — the generic container
 `Array` is the low-level, type-erased container used for storage, exchange
 (C Data Interface), and visitor dispatch.  It holds immutable bitmaps and
 buffers directly (no ArcPointer wrapping — sharing is handled inside Buffer
-via its internal ArcPointer[MemoryRegion]).  Typed arrays convert
+via its internal ArcPointer[Allocation]).  Typed arrays convert
 to/from `Array` via implicit constructors and `as_*()` accessors.
 """
 
 from memory import ArcPointer, memcpy
 from sys import size_of
+from gpu.host import DeviceContext
 from .buffers import Buffer, Bitmap, BitmapBuilder
 from .dtypes import *
 
@@ -281,6 +282,24 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
         """Returns the number of null values in the array."""
         var valid_count = self.bitmap.bit_count()
         return self.length - valid_count
+
+    fn to_device(self, ctx: DeviceContext) raises -> PrimitiveArray[Self.T]:
+        """Upload array data to the GPU."""
+        return PrimitiveArray[Self.T](
+            length=self.length,
+            offset=0,
+            bitmap=self.bitmap.to_device(ctx),
+            buffer=self.buffer.to_device(ctx),
+        )
+
+    fn to_host(self, ctx: DeviceContext) raises -> PrimitiveArray[Self.T]:
+        """Download array data from the GPU."""
+        return PrimitiveArray[Self.T](
+            length=self.length,
+            offset=0,
+            bitmap=self.bitmap.to_host(ctx),
+            buffer=self.buffer.to_host(ctx),
+        )
 
 
 comptime Int8Array = PrimitiveArray[int8]

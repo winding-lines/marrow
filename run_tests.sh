@@ -14,7 +14,7 @@ echo "Running tests in: $test_dir"
 tmpfile=$(mktemp)
 trap "rm -f $tmpfile" EXIT
 
-find "$test_dir" -name "test_*.mojo" -type f -not -path "*/.pixi/*" | sort | while IFS= read -r test_file; do
+find "$test_dir" -name "test_*.mojo" -not -name "test_gpu_*" -type f -not -path "*/.pixi/*" | sort | while IFS= read -r test_file; do
   echo "Running: $test_file"
   if ! mojo run -I . "$test_file"; then
     echo "1" >"$tmpfile"
