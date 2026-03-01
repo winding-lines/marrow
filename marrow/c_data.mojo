@@ -270,7 +270,7 @@ struct CArrowArray(Movable):
             bitmap = bm^.freeze()
 
         var buffers = List[Buffer]()
-        var children = List[ArcPointer[Array]]()
+        var children = List[Array]()
 
         if dtype.is_bool():
             if self.n_buffers != 2:
@@ -327,7 +327,7 @@ struct CArrowArray(Movable):
             var values_array = self.children[0][]._to_array(
                 values_field.dtype, keeper
             )
-            children.append(ArcPointer(values_array^))
+            children.append(values_array^)
         elif dtype.is_string():
             if self.n_buffers != 3:
                 raise Error(
@@ -367,7 +367,7 @@ struct CArrowArray(Movable):
             var values_array = self.children[0][]._to_array(
                 values_field.dtype, keeper
             )
-            children.append(ArcPointer(values_array^))
+            children.append(values_array^)
         elif dtype.is_struct():
             if self.n_buffers != 1:
                 raise Error(
@@ -386,7 +386,7 @@ struct CArrowArray(Movable):
                 var child_array = self.children[i][]._to_array(
                     child_field.dtype, keeper
                 )
-                children.append(ArcPointer(child_array^))
+                children.append(child_array^)
         else:
             raise Error("unsupported dtype for buffer import: " + String(dtype))
 

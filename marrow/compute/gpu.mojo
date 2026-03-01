@@ -230,7 +230,7 @@ fn _cosine_similarity_gpu[
     var n_values = n_vectors * dim
 
     # Data is already on device — get handles directly
-    ref child = vectors.values[]
+    ref child = vectors.values
     var vec_dev = child.buffers[0].device_buffer().create_sub_buffer[native](
         0, n_values
     )

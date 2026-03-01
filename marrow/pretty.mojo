@@ -73,15 +73,14 @@ struct ArrayPrinter(ArrayVisitor):
                 var end = Int(
                     array.offsets.unsafe_get[DType.int32](array.offset + i + 1)
                 )
-                ref first_child = array.values[]
                 self.visit[space](
                     Array[space](
-                        dtype=first_child.dtype.copy(),
-                        bitmap=first_child.bitmap,
-                        buffers=first_child.buffers.copy(),
+                        dtype=array.values.dtype.copy(),
+                        bitmap=array.values.bitmap,
+                        buffers=array.values.buffers.copy(),
                         offset=start,
                         length=end - start,
-                        children=first_child.children.copy(),
+                        children=array.values.children.copy(),
                     )
                 )
             else:
@@ -101,15 +100,14 @@ struct ArrayPrinter(ArrayVisitor):
                 break
             if array.is_valid(i):
                 var start = (array.offset + i) * list_size
-                ref child = array.values[]
                 self.visit[space](
                     Array[space](
-                        dtype=child.dtype.copy(),
-                        bitmap=child.bitmap,
-                        buffers=child.buffers.copy(),
+                        dtype=array.values.dtype.copy(),
+                        bitmap=array.values.bitmap,
+                        buffers=array.values.buffers.copy(),
                         offset=start,
                         length=list_size,
-                        children=child.children.copy(),
+                        children=array.values.children.copy(),
                     )
                 )
             else:
@@ -128,7 +126,7 @@ struct ArrayPrinter(ArrayVisitor):
                 self.output.write("'")
                 self.output.write(field.name)
                 self.output.write("': ")
-                self.visit[space](array.children[i][])
+                self.visit[space](array.children[i])
         self.output.write("})")
 
     fn visit[space: MemorySpace = MemorySpace.CPU](

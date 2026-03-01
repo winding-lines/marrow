@@ -1,5 +1,4 @@
 from testing import assert_equal, assert_true, assert_false, TestSuite
-from memory import ArcPointer
 from marrow.arrays import *
 from marrow.builders import (
     BoolBuilder,
@@ -47,7 +46,7 @@ def test_array_data_with_offset():
         length=3,
         bitmap=bitmap^.freeze(),
         buffers=buffers^,
-        children=List[ArcPointer[Array]](),
+        children=List[Array](),
         offset=2,
     )
 
@@ -72,7 +71,7 @@ def test_array_data_fieldwise_init():
         length=5,
         bitmap=bitmap,
         buffers=buffers^,
-        children=List[ArcPointer[Array]](),
+        children=List[Array](),
         offset=3,
     )
 
@@ -119,7 +118,7 @@ def test_array_copy():
         length=3,
         bitmap=BitmapBuilder.alloc(3).freeze(),
         buffers=src_buffers^,
-        children=List[ArcPointer[Array]](),
+        children=List[Array](),
         offset=0,
     )
     var copy = src.copy()
@@ -139,7 +138,7 @@ def test_array_move():
         length=5,
         bitmap=BitmapBuilder.alloc(5).freeze(),
         buffers=a_buffers^,
-        children=List[ArcPointer[Array]](),
+        children=List[Array](),
         offset=0,
     )
     var b = a^
@@ -314,7 +313,7 @@ def test_primitive_array_with_offset():
         length=arr.length,
         bitmap=arr.bitmap,
         buffers=arr_buffers^,
-        children=List[ArcPointer[Array]](),
+        children=List[Array](),
         offset=arr.offset,
     )
     var arr_with_offset = PrimitiveArray[int32](arr_data, offset=2)
@@ -671,7 +670,7 @@ def test_primitive_freeze_with_offset():
         length=3,
         bitmap=a.bitmap,
         buffers=data_buffers^,
-        children=List[ArcPointer[Array]](),
+        children=List[Array](),
         offset=1,
     )
     var sliced = PrimitiveArray[int64](data)

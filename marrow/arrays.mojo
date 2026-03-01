@@ -7,13 +7,13 @@ corresponding builder from `marrow.builders` and call `freeze()`.
 Array — the generic container
 -----------------------------
 `Array` is the low-level, type-erased container used for storage, exchange
-(C Data Interface), and visitor dispatch.  It holds immutable bitmaps and
-buffers directly (no ArcPointer wrapping — sharing is handled inside Buffer
-via its internal ArcPointer[Allocation]).  Typed arrays convert
-to/from `Array` via implicit constructors and `as_*()` accessors.
+(C Data Interface), and visitor dispatch.  It holds immutable bitmaps,
+buffers, and child arrays directly (no ArcPointer wrapping — sharing is
+handled inside Buffer via its internal ArcPointer[Allocation]).  Typed arrays
+convert to/from `Array` via implicit constructors and `as_*()` accessors.
 """
 
-from memory import ArcPointer, memcpy
+from memory import memcpy
 from sys import size_of
 from gpu.host import DeviceContext
 from .buffers import Buffer, Bitmap, BitmapBuilder, MemorySpace
@@ -35,7 +35,7 @@ struct Array[space: MemorySpace = MemorySpace.CPU](Copyable, Movable, Stringable
     var length: Int
     var bitmap: Bitmap[Self.space]
     var buffers: List[Buffer[Self.space]]
-    var children: List[ArcPointer[Array[Self.space]]]
+    var children: List[Array[Self.space]]
     var offset: Int
 
     @staticmethod
@@ -52,7 +52,7 @@ struct Array[space: MemorySpace = MemorySpace.CPU](Copyable, Movable, Stringable
             length=length,
             bitmap=bitmap^.freeze(),
             buffers=buffers^,
-            children=List[ArcPointer[Array[MemorySpace.CPU]]](),
+            children=List[Array[MemorySpace.CPU]](),
             offset=0,
         )
 
@@ -90,7 +90,7 @@ struct Array[space: MemorySpace = MemorySpace.CPU](Copyable, Movable, Stringable
         self.offset = array.offset
         self.bitmap = array.bitmap
         self.buffers = [array.offsets]
-        self.children = [array.values]
+        self.children = [array.values.copy()]
 
     @implicit
     fn __init__(out self, array: FixedSizeListArray[Self.space]):
@@ -99,7 +99,7 @@ struct Array[space: MemorySpace = MemorySpace.CPU](Copyable, Movable, Stringable
         self.offset = array.offset
         self.bitmap = array.bitmap
         self.buffers = []
-        self.children = [array.values]
+        self.children = [array.values.copy()]
 
     @implicit
     fn __init__(out self, array: StructArray[Self.space]):
@@ -423,7 +423,7 @@ struct ListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
     var offset: Int
     var bitmap: Bitmap[Self.space]
     var offsets: Buffer[Self.space]
-    var values: ArcPointer[Array[Self.space]]
+    var values: Array[Self.space]
 
     fn __init__(out self, ref data: Array[Self.space]) raises:
         if not data.dtype.is_list():
@@ -440,7 +440,7 @@ struct ListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
         self.offset = data.offset
         self.bitmap = data.bitmap
         self.offsets = data.buffers[0]
-        self.values = data.children[0]
+        self.values = data.children[0].copy()
 
     fn __len__(self) -> Int:
         return self.length
@@ -459,14 +459,13 @@ struct ListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
         var end = Int(
             self.offsets.unsafe_get[DType.int32](self.offset + index + 1)
         )
-        ref first_child = self.values[]
         return Array[Self.space](
-            dtype=first_child.dtype.copy(),
-            bitmap=first_child.bitmap,
-            buffers=first_child.buffers.copy(),
+            dtype=self.values.dtype.copy(),
+            bitmap=self.values.bitmap,
+            buffers=self.values.buffers.copy(),
             offset=start,
             length=end - start,
-            children=first_child.children.copy(),
+            children=self.values.children.copy(),
         )
 
 
@@ -479,7 +478,7 @@ struct FixedSizeListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
     var length: Int
     var offset: Int
     var bitmap: Bitmap[Self.space]
-    var values: ArcPointer[Array[Self.space]]
+    var values: Array[Self.space]
 
     fn __init__(out self, ref data: Array[Self.space]) raises:
         if not data.dtype.is_fixed_size_list():
@@ -497,7 +496,7 @@ struct FixedSizeListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
         self.length = data.length
         self.offset = data.offset
         self.bitmap = data.bitmap
-        self.values = data.children[0]
+        self.values = data.children[0].copy()
 
     fn __len__(self) -> Int:
         return self.length
@@ -508,14 +507,13 @@ struct FixedSizeListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
     fn unsafe_get(self, index: Int, out array_data: Array[Self.space]) raises:
         var list_size = self.dtype.size
         var start = (self.offset + index) * list_size
-        ref child = self.values[]
         return Array[Self.space](
-            dtype=child.dtype.copy(),
-            bitmap=child.bitmap,
-            buffers=child.buffers.copy(),
+            dtype=self.values.dtype.copy(),
+            bitmap=self.values.bitmap,
+            buffers=self.values.buffers.copy(),
             offset=start,
             length=list_size,
-            children=child.children.copy(),
+            children=self.values.children.copy(),
         )
 
     fn to_device(
@@ -523,24 +521,23 @@ struct FixedSizeListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
     ) raises -> FixedSizeListArray[MemorySpace.DEVICE]:
         """Upload child values to the GPU."""
         comptime assert Self.space == MemorySpace.CPU
-        ref child = self.values[]
         var new_buffers = List[Buffer[MemorySpace.DEVICE]]()
-        for i in range(len(child.buffers)):
-            new_buffers.append(child.buffers[i].to_device(ctx))
+        for i in range(len(self.values.buffers)):
+            new_buffers.append(self.values.buffers[i].to_device(ctx))
         var new_child = Array[MemorySpace.DEVICE](
-            dtype=child.dtype.copy(),
-            bitmap=child.bitmap.to_device(ctx),
+            dtype=self.values.dtype.copy(),
+            bitmap=self.values.bitmap.to_device(ctx),
             buffers=new_buffers^,
-            offset=child.offset,
-            length=child.length,
-            children=List[ArcPointer[Array[MemorySpace.DEVICE]]](),
+            offset=self.values.offset,
+            length=self.values.length,
+            children=List[Array[MemorySpace.DEVICE]](),
         )
         return FixedSizeListArray[MemorySpace.DEVICE](
             dtype=self.dtype.copy(),
             length=self.length,
             offset=self.offset,
             bitmap=self.bitmap.to_device(ctx),
-            values=ArcPointer(new_child^),
+            values=new_child^,
         )
 
 
@@ -552,7 +549,7 @@ struct StructArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
     var dtype: DataType
     var length: Int
     var bitmap: Bitmap[Self.space]
-    var children: List[ArcPointer[Array[Self.space]]]
+    var children: List[Array[Self.space]]
 
     fn __init__(out self, *, ref data: Array[Self.space]):
         self.dtype = data.dtype.copy()
@@ -574,7 +571,7 @@ struct StructArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
         self, name: StringSlice
     ) raises -> ref[self.children[0]] Array[Self.space]:
         """Access the field with the given name in the struct."""
-        return self.children[self._index_for_field_name(name)][]
+        return self.children[self._index_for_field_name(name)]
 
 
 struct ChunkedArray[space: MemorySpace = MemorySpace.CPU](Stringable):
@@ -626,7 +623,7 @@ struct ChunkedArray[space: MemorySpace = MemorySpace.CPU](Stringable):
         comptime assert Self.space == MemorySpace.CPU, "combine_chunks requires CPU arrays"
         var bitmap = BitmapBuilder.alloc(self.length)
         var buffers = List[Buffer[Self.space]]()
-        var children = List[ArcPointer[Array[Self.space]]]()
+        var children = List[Array[Self.space]]()
         var start = 0
         while self.chunks:
             var chunk = self.chunks.pop(0)
@@ -639,7 +636,7 @@ struct ChunkedArray[space: MemorySpace = MemorySpace.CPU](Stringable):
             for i in range(len(chunk.buffers)):
                 buffers.append(chunk.buffers[i])
             for i in range(len(chunk.children)):
-                children.append(chunk.children[i])
+                children.append(chunk.children[i].copy())
             start += chunk_length
         combined = Array[Self.space](
             dtype=self.dtype.copy(),

@@ -199,11 +199,11 @@ def test_arrow_array_stream():
     assert_equal(array_data.length, 5)
     assert_equal(len(array_data.children), 2)
 
-    var col1_array = array_data.children[0][].copy().as_int64()
+    var col1_array = array_data.children[0].copy().as_int64()
     assert_equal(col1_array.unsafe_get(0), 1)
     assert_equal(col1_array.unsafe_get(4), 5)
 
-    var col2_array = array_data.children[1][].copy().as_string()
+    var col2_array = array_data.children[1].copy().as_string()
     assert_equal(String(col2_array.unsafe_get(0)), "a")
     assert_equal(String(col2_array.unsafe_get(4)), "e")
 

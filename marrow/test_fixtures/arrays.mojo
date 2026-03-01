@@ -3,7 +3,6 @@ from marrow.arrays import (
     ListArray,
     StructArray,
 )
-from memory import ArcPointer
 from marrow.buffers import Buffer, Bitmap, BufferBuilder, BitmapBuilder
 from marrow.dtypes import uint8, DataType, list_, int32, Field, struct_
 from testing import assert_equal
@@ -78,7 +77,7 @@ fn build_list_of_int[data_type: DataType]() raises -> ListArray:
         length=10,
         bitmap=bitmap^.freeze(),
         buffers=value_buffers^,
-        children=List[ArcPointer[Array]](),
+        children=List[Array](),
         offset=0,
     )
 
@@ -90,8 +89,8 @@ fn build_list_of_int[data_type: DataType]() raises -> ListArray:
     list_bitmap.unsafe_set(3, False)
     var list_buffers = List[Buffer]()
     list_buffers.append(value_offset^)
-    var list_children = List[ArcPointer[Array]]()
-    list_children.append(ArcPointer(value_data^))
+    var list_children = List[Array]()
+    list_children.append(value_data^)
     var list_data = Array(
         dtype=list_(materialize[data_type]()),
         length=6,
@@ -123,7 +122,7 @@ fn build_list_of_list[data_type: DataType]() raises -> ListArray:
         length=10,
         bitmap=bitmap^.freeze(),
         buffers=value_buffers^,
-        children=List[ArcPointer[Array]](),
+        children=List[Array](),
         offset=0,
     )
 
@@ -135,8 +134,8 @@ fn build_list_of_list[data_type: DataType]() raises -> ListArray:
     list_bitmap.unsafe_set(3, False)
     var list_buffers = List[Buffer]()
     list_buffers.append(value_offset^)
-    var list_children = List[ArcPointer[Array]]()
-    list_children.append(ArcPointer(value_data^))
+    var list_children = List[Array]()
+    list_children.append(value_data^)
     var list_data = Array(
         dtype=list_(materialize[data_type]()),
         length=6,
@@ -152,8 +151,8 @@ fn build_list_of_list[data_type: DataType]() raises -> ListArray:
     top_bitmap.unsafe_range_set(0, 4, True)
     var top_buffers = List[Buffer]()
     top_buffers.append(top_offsets^)
-    var top_children = List[ArcPointer[Array]]()
-    top_children.append(ArcPointer(list_data^))
+    var top_children = List[Array]()
+    top_children.append(list_data^)
     return ListArray(
         Array(
             dtype=list_(list_(materialize[data_type]())),
@@ -178,9 +177,9 @@ def build_struct() -> StructArray:
     var field_2 = Field("int_data_b", materialize[int32]())
     bitmap = BitmapBuilder.alloc(2)
     bitmap.unsafe_range_set(0, 2, True)
-    var struct_children = List[ArcPointer[Array]]()
-    struct_children.append(ArcPointer(int_data_a^))
-    struct_children.append(ArcPointer(int_data_b^))
+    var struct_children = List[Array]()
+    struct_children.append(int_data_a^)
+    struct_children.append(int_data_b^)
     var struct_array_data = Array(
         dtype=struct_([field_1^, field_2^]),
         length=2,

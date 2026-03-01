@@ -33,7 +33,7 @@ fn _cosine_similarity_no_nulls[
     var op = result.buffer.ptr.bitcast[Scalar[native]]()
 
     # Flat values pointer from the child array
-    ref child = vectors.values[]
+    ref child = vectors.values
     var vp = (
         child.buffers[0].ptr.bitcast[Scalar[native]]()
         + child.offset

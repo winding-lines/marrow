@@ -19,7 +19,7 @@ Example
     var arr = b^.freeze()   # PrimitiveArray[int64]
 """
 
-from memory import ArcPointer, memcpy
+from memory import memcpy
 from sys import size_of
 from .buffers import Buffer, BufferBuilder, Bitmap, BitmapBuilder, MemorySpace
 from .dtypes import *
@@ -288,7 +288,7 @@ struct ListBuilder(Movable, Sized):
     var capacity: Int
     var bitmap: BitmapBuilder
     var offsets: BufferBuilder
-    var values: ArcPointer[Array]
+    var values: Array[MemorySpace.CPU]
 
     fn __init__(
         out self,
@@ -298,7 +298,7 @@ struct ListBuilder(Movable, Sized):
         capacity: Int,
         var bitmap: BitmapBuilder,
         var offsets: BufferBuilder,
-        var values: ArcPointer[Array],
+        var values: Array[MemorySpace.CPU],
     ):
         """Builder constructor for creating a mutable ListBuilder."""
         self.dtype = dtype^
@@ -335,7 +335,7 @@ struct ListBuilder(Movable, Sized):
             capacity=capacity,
             bitmap=bitmap^,
             offsets=offsets^,
-            values=ArcPointer(values^),
+            values=values^,
         )
 
     fn __len__(self) -> Int:
@@ -344,7 +344,7 @@ struct ListBuilder(Movable, Sized):
     fn unsafe_append(mut self, is_valid: Bool):
         self.bitmap.unsafe_set(self.length, is_valid)
         self.offsets.unsafe_set[DType.uint32](
-            self.length + 1, UInt32(self.values[].length)
+            self.length + 1, UInt32(self.values.length)
         )
         self.length += 1
 
@@ -380,7 +380,7 @@ struct FixedSizeListBuilder(Movable, Sized):
     var offset: Int
     var capacity: Int
     var bitmap: BitmapBuilder
-    var values: ArcPointer[Array]
+    var values: Array[MemorySpace.CPU]
 
     fn __init__(
         out self,
@@ -389,7 +389,7 @@ struct FixedSizeListBuilder(Movable, Sized):
         offset: Int,
         capacity: Int,
         var bitmap: BitmapBuilder,
-        var values: ArcPointer[Array],
+        var values: Array[MemorySpace.CPU],
     ):
         self.dtype = dtype^
         self.length = length
@@ -427,7 +427,7 @@ struct FixedSizeListBuilder(Movable, Sized):
             offset=0,
             capacity=max(n_lists, capacity),
             bitmap=bitmap^,
-            values=ArcPointer(values^),
+            values=values^,
         )
 
     fn __len__(self) -> Int:
@@ -463,7 +463,7 @@ struct StructBuilder(Movable, Sized):
     var length: Int
     var capacity: Int
     var bitmap: BitmapBuilder
-    var children: List[ArcPointer[Array]]
+    var children: List[Array[MemorySpace.CPU]]
 
     fn __init__(
         out self,
