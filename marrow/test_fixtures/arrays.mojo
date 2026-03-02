@@ -3,7 +3,7 @@ from marrow.arrays import (
     ListArray,
     StructArray,
 )
-from marrow.buffers import Buffer, Bitmap, BufferBuilder, BitmapBuilder
+from marrow.buffers import Buffer, BufferBuilder, bitmap_get, bitmap_set, bitmap_range_set
 from marrow.dtypes import uint8, DataType, list_, int32, Field, struct_
 from testing import assert_equal
 from reflection import call_location
@@ -19,16 +19,16 @@ fn buffer_from[dtype: DType](*values: Scalar[dtype]) -> Buffer:
 
 @always_inline
 def assert_bitmap_set(
-    bitmap: Bitmap, expected_true_pos: List[Int], message: StringLiteral
+    ptr: UnsafePointer[UInt8, MutAnyOrigin], n_bits: Int, expected_true_pos: List[Int], message: StringLiteral
 ) -> None:
     var list_pos = 0
-    for i in range(bitmap.length()):
+    for i in range(n_bits):
         var expected_value = False
         if list_pos < len(expected_true_pos):
             if expected_true_pos[list_pos] == i:
                 expected_value = True
                 list_pos += 1
-        var current_value = bitmap.unsafe_get(i)
+        var current_value = Bool((ptr[i // 8] >> UInt8(i % 8)) & 1)
         assert_equal(
             current_value,
             expected_value,
@@ -41,16 +41,17 @@ def assert_bitmap_set(
 
 @always_inline
 def assert_bitmap_set(
-    bitmap: BitmapBuilder, expected_true_pos: List[Int], message: StringLiteral
+    buffer: Buffer, n_bits: Int, expected_true_pos: List[Int], message: StringLiteral
 ) -> None:
     var list_pos = 0
-    for i in range(bitmap.length()):
+    var ptr = buffer.unsafe_ptr()
+    for i in range(n_bits):
         var expected_value = False
         if list_pos < len(expected_true_pos):
             if expected_true_pos[list_pos] == i:
                 expected_value = True
                 list_pos += 1
-        var current_value = bitmap.unsafe_get(i)
+        var current_value = bitmap_get(ptr, i)
         assert_equal(
             current_value,
             expected_value,
@@ -64,8 +65,8 @@ def assert_bitmap_set(
 fn build_list_of_int[data_type: DataType]() raises -> ListArray:
     """Build a test ListArray that itself contains a ListArray of IntArrays."""
     # Define all the values.
-    var bitmap = BitmapBuilder.alloc(10)
-    bitmap.unsafe_range_set(0, 10, True)
+    var bitmap = BufferBuilder.alloc_bits(10)
+    bitmap_range_set(bitmap.ptr, 0, 10, True)
     var buffer = BufferBuilder.alloc[data_type.native](10)
     for i in range(10):
         buffer.unsafe_set[data_type.native](i, Scalar[data_type.native](i + 1))
@@ -84,9 +85,9 @@ fn build_list_of_int[data_type: DataType]() raises -> ListArray:
     # Define the PrimitiveArrays.
     var value_offset = buffer_from[DType.int32](0, 2, 4, 7, 7, 8, 10)
 
-    var list_bitmap = BitmapBuilder.alloc(6)
-    list_bitmap.unsafe_range_set(0, 6, True)
-    list_bitmap.unsafe_set(3, False)
+    var list_bitmap = BufferBuilder.alloc_bits(6)
+    bitmap_range_set(list_bitmap.ptr, 0, 6, True)
+    bitmap_set(list_bitmap.ptr, 3, False)
     var list_buffers = List[Buffer]()
     list_buffers.append(value_offset^)
     var list_children = List[Array]()
@@ -109,8 +110,8 @@ fn build_list_of_list[data_type: DataType]() raises -> ListArray:
     """
 
     # Define all the values.
-    var bitmap = BitmapBuilder.alloc(10)
-    bitmap.unsafe_range_set(0, 10, True)
+    var bitmap = BufferBuilder.alloc_bits(10)
+    bitmap_range_set(bitmap.ptr, 0, 10, True)
     var buffer = BufferBuilder.alloc[data_type.native](10)
     for i in range(10):
         buffer.unsafe_set[data_type.native](i, Scalar[data_type.native](i + 1))
@@ -129,9 +130,9 @@ fn build_list_of_list[data_type: DataType]() raises -> ListArray:
     # Define the PrimitiveArrays.
     var value_offset = buffer_from[DType.int32](0, 2, 4, 7, 7, 8, 10)
 
-    var list_bitmap = BitmapBuilder.alloc(6)
-    list_bitmap.unsafe_range_set(0, 6, True)
-    list_bitmap.unsafe_set(3, False)
+    var list_bitmap = BufferBuilder.alloc_bits(6)
+    bitmap_range_set(list_bitmap.ptr, 0, 6, True)
+    bitmap_set(list_bitmap.ptr, 3, False)
     var list_buffers = List[Buffer]()
     list_buffers.append(value_offset^)
     var list_children = List[Array]()
@@ -147,8 +148,8 @@ fn build_list_of_list[data_type: DataType]() raises -> ListArray:
 
     # Now define the master array data.
     var top_offsets = buffer_from[DType.int32](0, 2, 5, 6)
-    var top_bitmap = BitmapBuilder.alloc(4)
-    top_bitmap.unsafe_range_set(0, 4, True)
+    var top_bitmap = BufferBuilder.alloc_bits(4)
+    bitmap_range_set(top_bitmap.ptr, 0, 4, True)
     var top_buffers = List[Buffer]()
     top_buffers.append(top_offsets^)
     var top_children = List[Array]()
@@ -175,8 +176,8 @@ def build_struct() -> StructArray:
         buffer_from[DType.int32](10, 20, 30), 3
     )
     var field_2 = Field("int_data_b", materialize[int32]())
-    bitmap = BitmapBuilder.alloc(2)
-    bitmap.unsafe_range_set(0, 2, True)
+    var bitmap = BufferBuilder.alloc_bits(2)
+    bitmap_range_set(bitmap.ptr, 0, 2, True)
     var struct_children = List[Array]()
     struct_children.append(int_data_a^)
     struct_children.append(int_data_b^)

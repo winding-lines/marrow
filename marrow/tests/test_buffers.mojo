@@ -1,3 +1,4 @@
+import math
 from testing import assert_equal, assert_true, assert_false, TestSuite
 from marrow.test_fixtures.arrays import assert_bitmap_set
 
@@ -16,14 +17,14 @@ def test_buffer_init():
     assert_true(is_aligned(b.ptr, 64))
 
 
-def test_bitmap_alloc_sizes():
+def test_alloc_bits():
     # 10 bits → ceildiv(10,8)=2 bytes → aligned to 64
-    var b1 = BitmapBuilder.alloc(10)
-    assert_equal(b1.size(), 64)
+    var b1 = BufferBuilder.alloc_bits(10)
+    assert_equal(b1.size, 64)
 
     # 64*8+1 bits → ceildiv(513,8)=65 bytes → aligned to 128
-    var b2 = BitmapBuilder.alloc(64 * 8 + 1)
-    assert_equal(b2.size(), 128)
+    var b2 = BufferBuilder.alloc_bits(64 * 8 + 1)
+    assert_equal(b2.size, 128)
 
 
 def test_buffer_grow():
@@ -70,121 +71,70 @@ def test_buffer_swap():
     assert_equal(two.unsafe_get(0), 111)
 
 
-def test_bitmap():
-    var b = BitmapBuilder.alloc(10)
-    assert_equal(b.size(), 64)
-    assert_equal(b.length(), 64 * 8)
-    assert_equal(b.bit_count(), 0)
+def test_bitmap_get_set():
+    var b = BufferBuilder.alloc_bits(10)
+    assert_equal(b.size, 64)
 
-    assert_false(b.unsafe_get(0))
-    b.unsafe_set(0, True)
-    assert_true(b.unsafe_get(0))
-    assert_equal(b.bit_count(), 1)
-    assert_false(b.unsafe_get(1))
-    b.unsafe_set(1, True)
-    assert_true(b.unsafe_get(1))
-    assert_equal(b.bit_count(), 2)
+    assert_false(Bool((b.ptr[0] >> UInt8(0)) & 1))
+    bitmap_set(b.ptr, 0, True)
+    assert_true(Bool((b.ptr[0] >> UInt8(0)) & 1))
+    bitmap_set(b.ptr, 1, True)
+    assert_true(Bool((b.ptr[0] >> UInt8(1)) & 1))
 
-
-def test_count_leading_zeros():
-    var b = BitmapBuilder.alloc(10)
-    var expected_bits = b.length()
-    assert_equal(b.count_leading_zeros(), expected_bits)
-    assert_equal(b.count_leading_zeros(10), expected_bits - 10)
-
-    b.unsafe_set(0, True)
-    assert_equal(b.count_leading_zeros(), 0)
-    assert_equal(b.count_leading_zeros(1), expected_bits - 1)
-    b.unsafe_set(0, False)
-
-    var to_test = [0, 1, 7, 8, 10, 16, 31]
-    for i in range(len(to_test)):
-        bit_position = to_test[i]
-        b.unsafe_set(bit_position, True)
-        assert_equal(b.count_leading_zeros(), bit_position)
-        if bit_position > 4:
-            # Count with start position.
-            assert_equal(b.count_leading_bits(4), bit_position - 4)
-        b.unsafe_set(bit_position, False)
+    var frozen = b^.freeze()
+    assert_true(bitmap_get(frozen.unsafe_ptr(), 0))
+    assert_true(bitmap_get(frozen.unsafe_ptr(), 1))
+    assert_false(bitmap_get(frozen.unsafe_ptr(), 2))
+    # 10-bit bitmap → 2 bytes of actual data
+    assert_equal(bitmap_count_ones(frozen.unsafe_ptr(), math.ceildiv(10, 8)), 2)
 
 
-def test_count_leading_ones():
-    var b = BitmapBuilder.alloc(10)
-    assert_equal(b.count_leading_ones(), 0)
-    b.unsafe_set(0, True)
-    assert_equal(b.count_leading_ones(), 1)
-    assert_equal(b.count_leading_ones(1), 0)
-
-    b.unsafe_set(1, True)
-    assert_equal(b.count_leading_ones(), 2)
-    assert_equal(b.count_leading_ones(1), 1)
+def _reset(mut bitmap: BufferBuilder, n_bits: Int):
+    bitmap_range_set(bitmap.ptr, 0, n_bits, False)
+    assert_bitmap_set(bitmap.ptr, n_bits, [], "after _reset")
 
 
-def _reset(mut bitmap: BitmapBuilder):
-    bitmap.unsafe_range_set(0, bitmap.length(), False)
-    assert_bitmap_set(bitmap, [], "after _reset")
+def test_bitmap_range_set():
+    var bitmap = BufferBuilder.alloc_bits(16)
+    var n_bits = 16
 
+    bitmap_range_set(bitmap.ptr, 0, 10, True)
+    assert_bitmap_set(bitmap.ptr, n_bits, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "range 0-10")
+    bitmap_range_set(bitmap.ptr, 0, 10, False)
+    assert_bitmap_set(bitmap.ptr, n_bits, [], "reset")
 
-def test_unsafe_range_set():
-    var bitmap = BitmapBuilder.alloc(16)
-
-    bitmap.unsafe_range_set(0, 10, True)
-    assert_bitmap_set(bitmap, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "range 0-10")
-    bitmap.unsafe_range_set(0, 10, False)
-    assert_bitmap_set(bitmap, [], "reset")
-
-    bitmap.unsafe_range_set(0, 0, True)
-    assert_bitmap_set(bitmap, [], "range 0")
+    bitmap_range_set(bitmap.ptr, 0, 0, True)
+    assert_bitmap_set(bitmap.ptr, n_bits, [], "range 0")
 
     var to_test = [0, 1, 7, 8, 15]
     for pos in range(len(to_test)):
-        _reset(bitmap)
+        _reset(bitmap, n_bits)
         var start_bit = to_test[pos]
-        bitmap.unsafe_range_set(start_bit, 1, True)
-        assert_bitmap_set(bitmap, [start_bit], "range  1")
-        if to_test[pos] < bitmap.length() - 1:
-            _reset(bitmap)
-            bitmap.unsafe_range_set(start_bit, 2, True)
-            assert_bitmap_set(bitmap, [start_bit, start_bit + 1], "range 2")
+        bitmap_range_set(bitmap.ptr, start_bit, 1, True)
+        assert_bitmap_set(bitmap.ptr, n_bits, [start_bit], "range  1")
+        if to_test[pos] < n_bits - 1:
+            _reset(bitmap, n_bits)
+            bitmap_range_set(bitmap.ptr, start_bit, 2, True)
+            assert_bitmap_set(bitmap.ptr, n_bits, [start_bit, start_bit + 1], "range 2")
 
 
-def test_partial_byte_set():
-    var bitmap = BitmapBuilder.alloc(16)
+def test_bitmap_extend():
+    var src = BufferBuilder.alloc_bits(6)
+    bitmap_set(src.ptr, 0, True)
+    bitmap_set(src.ptr, 5, True)
 
-    bitmap.unsafe_range_set(0, 0, True)
-    assert_bitmap_set(bitmap, [], "range 0")
+    var dst = BufferBuilder.alloc_bits(8)
+    bitmap_range_set(dst.ptr, 0, 8, False)
+    bitmap_extend(dst.ptr, src^.freeze().unsafe_ptr(), 0, 6)
+    assert_bitmap_set(dst.ptr, 8, [0, 5], "after extend")
 
-    # Set one bit to True.
-    bitmap.partial_byte_set(0, 0, 1, True)
-    assert_bitmap_set(bitmap, [0], "set bit 0")
-
-    # Set one bit to False.
-    bitmap.partial_byte_set(0, 0, 1, False)
-    assert_bitmap_set(bitmap, [], "reset bit 0")
-
-    # Set multiple bits to True.
-    bitmap.partial_byte_set(1, 2, 5, True)
-    assert_bitmap_set(bitmap, [10, 11, 12], "set multiple bits")
-
-    # Set multiple bits to False.
-    bitmap.partial_byte_set(1, 3, 5, False)
-    assert_bitmap_set(bitmap, [10], "reset multiple bits")
-
-
-def test_expand_bitmap() -> None:
-    var bitmap = BitmapBuilder.alloc(6)
-    bitmap.unsafe_set(0, True)
-    bitmap.unsafe_set(5, True)
-    assert_bitmap_set(bitmap, [0, 5], "initial setup")
-
-    # Create a new bitmap with 2 bits
-    var new_bitmap = BitmapBuilder.alloc(2)
-    new_bitmap.unsafe_set(0, True)
-
-    # Expand the bitmap (extend takes immutable Bitmap)
-    bitmap.extend(new_bitmap^.freeze(), 6, 2)
-    assert_bitmap_set(bitmap, [0, 5, 6], "after expand")
-
+    # extend into offset position
+    var dst2 = BufferBuilder.alloc_bits(8)
+    bitmap_range_set(dst2.ptr, 0, 8, False)
+    var src2 = BufferBuilder.alloc_bits(2)
+    bitmap_set(src2.ptr, 0, True)
+    bitmap_extend(dst2.ptr, src2^.freeze().unsafe_ptr(), 6, 2)
+    assert_bitmap_set(dst2.ptr, 8, [6], "extend at offset 6")
 
 
 def test_buffer_freeze():
@@ -198,38 +148,6 @@ def test_buffer_freeze():
     assert_equal(frozen.unsafe_get(1), 99)
     assert_equal(frozen.size, 64)
     assert_equal(frozen.length(), 64)
-
-
-
-def test_bitmap_freeze():
-    var bm = BitmapBuilder.alloc(16)
-    bm.unsafe_set(0, True)
-    bm.unsafe_set(5, True)
-    bm.unsafe_set(7, True)
-
-    var frozen = bm^.freeze()
-    # Reads still work on the frozen bitmap.
-    assert_true(frozen.unsafe_get(0))
-    assert_false(frozen.unsafe_get(1))
-    assert_true(frozen.unsafe_get(5))
-    assert_true(frozen.unsafe_get(7))
-    assert_equal(frozen.bit_count(), 3)
-
-
-
-def test_bitmap_to_buffer_implicit():
-    # Bitmap implicitly converts to Buffer when passed where a Buffer is expected.
-    var bm = BitmapBuilder.alloc(8)
-    bm.unsafe_set(0, True)
-    bm.unsafe_set(7, True)
-    var expected_size = bm.size()
-
-    # Freeze to immutable Bitmap, then test implicit Bitmap → Buffer conversion.
-    var frozen = bm^.freeze()
-    var buf: Buffer = frozen^
-    assert_equal(buf.size, expected_size)
-    # Bit 0 set and bit 7 set → byte 0 should be 0b10000001 = 129
-    assert_equal(buf.unsafe_get(0), 129)
 
 
 def test_buffer_no_device():

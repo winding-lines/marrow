@@ -168,7 +168,7 @@ fn mul[
     if ctx:
         return binary_gpu[T, _mul[T.native], "mul"](left, right, ctx.value())
     else:
-    return binary_simd[T, _mul[T.native], "mul"](left, right)
+        return binary_simd[T, _mul[T.native], "mul"](left, right)
 
 
 fn mul(

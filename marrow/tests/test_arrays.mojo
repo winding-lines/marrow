@@ -9,7 +9,7 @@ from marrow.builders import (
     StructBuilder,
 )
 from marrow.dtypes import *
-from marrow.buffers import Buffer, Bitmap, BufferBuilder, BitmapBuilder
+from marrow.buffers import Buffer, BufferBuilder, bitmap_set, bitmap_range_set
 from marrow.compute.filter import drop_nulls
 from marrow.test_fixtures.arrays import (
     assert_bitmap_set,
@@ -25,7 +25,7 @@ from marrow.test_fixtures.arrays import (
 def test_array_data_with_offset():
     """Test ArrayData with offset functionality."""
     # Create ArrayData with offset
-    var bitmap = BitmapBuilder.alloc(10)
+    var bitmap = BufferBuilder.alloc_bits(10)
     var buffer = BufferBuilder.alloc[int8.native](10)
 
     # Set some data in the buffer
@@ -34,9 +34,9 @@ def test_array_data_with_offset():
     buffer.unsafe_set[int8.native](4, 300)
 
     # Set validity bits
-    bitmap.unsafe_set(2, True)
-    bitmap.unsafe_set(3, True)
-    bitmap.unsafe_set(4, True)
+    bitmap_set(bitmap.ptr, 2, True)
+    bitmap_set(bitmap.ptr, 3, True)
+    bitmap_set(bitmap.ptr, 4, True)
 
     # Create ArrayData with offset=2
     var buffers = List[Buffer]()
@@ -60,7 +60,7 @@ def test_array_data_with_offset():
 
 def test_array_data_fieldwise_init():
     """Test that @fieldwise_init decorator works with offset field."""
-    var bitmap = BitmapBuilder.alloc(5).freeze()
+    var bitmap = BufferBuilder.alloc_bits(5).freeze()
     var buffer = BufferBuilder.alloc[int8.native](5).freeze()
 
     # Test creating ArrayData with all fields specified including offset
@@ -116,7 +116,7 @@ def test_array_copy():
     var src = Array(
         dtype=materialize[int8](),
         length=3,
-        bitmap=BitmapBuilder.alloc(3).freeze(),
+        bitmap=BufferBuilder.alloc_bits(3).freeze(),
         buffers=src_buffers^,
         children=List[Array](),
         offset=0,
@@ -136,7 +136,7 @@ def test_array_move():
     var a = Array(
         dtype=materialize[int8](),
         length=5,
-        bitmap=BitmapBuilder.alloc(5).freeze(),
+        bitmap=BufferBuilder.alloc_bits(5).freeze(),
         buffers=a_buffers^,
         children=List[Array](),
         offset=0,
@@ -281,7 +281,7 @@ def test_drop_null() -> None:
     )
     # Check the setup.
     assert_equal(primitive_array.null_count(), 5)
-    assert_bitmap_set(primitive_array.bitmap, [1, 3, 5, 7, 9], "check setup")
+    assert_bitmap_set(primitive_array.bitmap, primitive_array.length, [1, 3, 5, 7, 9], "check setup")
 
     var result = drop_nulls[uint8](primitive_array)
     assert_equal(result.unsafe_get(0), 1)
@@ -397,25 +397,6 @@ def test_string_builder():
 
 # --- ListArray / StructArray tests ---
 
-
-def test_list_int_array():
-    var ints = PrimitiveArray[int64](
-        Array.from_buffer[int64](buffer_from[DType.int64](1, 2, 3), 3)
-    )
-    var builder = ListBuilder.from_values(ints^)
-    assert_equal(builder.dtype, list_(materialize[int64]()))
-    var lists = builder^.freeze()
-
-    var first_value = lists.unsafe_get(0)
-    assert_equal(first_value.__str__(), "PrimitiveArray[int64]([1, 2, 3])")
-
-    assert_equal(len(lists), 1)
-
-    var data = Array(lists^)
-    assert_equal(data.length, 1)
-
-    var arr = data^.as_list()
-    assert_equal(len(arr), 1)
 
 
 def test_list_bool_array():

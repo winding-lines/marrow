@@ -16,7 +16,7 @@ convert to/from `Array` via implicit constructors and `as_*()` accessors.
 from memory import memcpy
 from sys import size_of
 from gpu.host import DeviceContext
-from .buffers import Buffer, Bitmap, BitmapBuilder, MemorySpace
+from .buffers import Buffer, BufferBuilder, MemorySpace, bitmap_get, bitmap_extend, bitmap_count_ones
 from .dtypes import *
 
 
@@ -33,28 +33,10 @@ struct Array(Copyable, Movable, Stringable):
 
     var dtype: DataType
     var length: Int
-    var bitmap: Bitmap
+    var bitmap: Buffer
     var buffers: List[Buffer]
     var children: List[Array]
     var offset: Int
-
-    @staticmethod
-    fn from_buffer[dtype: DataType](
-        buffer: Buffer, length: Int
-    ) -> Array:
-        """Build an Array from a buffer where all the values are not null."""
-        var bitmap = BitmapBuilder.alloc(length)
-        bitmap.unsafe_range_set(0, length, True)
-        var buffers = List[Buffer]()
-        buffers.append(buffer)
-        return Array(
-            dtype=materialize[dtype](),
-            length=length,
-            bitmap=bitmap^.freeze(),
-            buffers=buffers^,
-            children=List[Array](),
-            offset=0,
-        )
 
     @implicit
     fn __init__[T: DataType](out self, array: PrimitiveArray[T]):
@@ -71,7 +53,7 @@ struct Array(Copyable, Movable, Stringable):
         self.length = array.length
         self.offset = array.offset
         self.bitmap = array.bitmap
-        self.buffers = [array.values.buffer]
+        self.buffers = [array.values]
         self.children = []
 
     @implicit
@@ -127,7 +109,7 @@ struct Array(Copyable, Movable, Stringable):
         self.offset = take.offset
 
     fn is_valid(self, index: Int) -> Bool:
-        return self.bitmap.unsafe_get(index + self.offset)
+        return bitmap_get(self.bitmap.unsafe_ptr(), index + self.offset)
 
     fn __str__(self) -> String:
         from .pretty import ArrayPrinter
@@ -195,8 +177,8 @@ struct BoolArray(Movable, Sized):
 
     var length: Int
     var offset: Int
-    var bitmap: Bitmap
-    var values: Bitmap
+    var bitmap: Buffer
+    var values: Buffer
 
     fn __init__(out self, ref data: Array, offset: Int = 0) raises:
         if data.dtype != materialize[bool_]():
@@ -210,7 +192,7 @@ struct BoolArray(Movable, Sized):
         self.offset = data.offset + offset
         self.length = data.length
         self.bitmap = data.bitmap
-        self.values = Bitmap(data.buffers[0])
+        self.values = data.buffers[0]
 
     @always_inline
     fn __len__(self) -> Int:
@@ -218,11 +200,11 @@ struct BoolArray(Movable, Sized):
 
     @always_inline
     fn is_valid(self, index: Int) -> Bool:
-        return self.bitmap.unsafe_get(index + self.offset)
+        return bitmap_get(self.bitmap.unsafe_ptr(), index + self.offset)
 
     @always_inline
     fn unsafe_get(self, index: Int) -> Bool:
-        return self.values.unsafe_get(index + self.offset)
+        return bitmap_get(self.values.unsafe_ptr(), index + self.offset)
 
     fn __getitem__(self, index: Int) raises -> Bool:
         if index < 0 or index >= self.length:
@@ -236,7 +218,7 @@ struct BoolArray(Movable, Sized):
 
     fn null_count(self) -> Int:
         """Returns the number of null values in the array."""
-        var valid_count = self.bitmap.bit_count()
+        var valid_count = bitmap_count_ones(self.bitmap.unsafe_ptr(), self.bitmap.size)
         return self.length - valid_count
 
 
@@ -252,7 +234,7 @@ struct PrimitiveArray[T: DataType](
 
     var length: Int
     var offset: Int
-    var bitmap: Bitmap
+    var bitmap: Buffer
     var buffer: Buffer
 
     fn __init__(out self, ref data: Array, offset: Int = 0) raises:
@@ -278,7 +260,7 @@ struct PrimitiveArray[T: DataType](
 
     @always_inline
     fn is_valid(self, index: Int) -> Bool:
-        return self.bitmap.unsafe_get(index + self.offset)
+        return bitmap_get(self.bitmap.unsafe_ptr(), index + self.offset)
 
     @always_inline
     fn unsafe_get(self, index: Int) -> Self.scalar:
@@ -296,7 +278,7 @@ struct PrimitiveArray[T: DataType](
 
     fn null_count(self) -> Int:
         """Returns the number of null values in the array."""
-        var valid_count = self.bitmap.bit_count()
+        var valid_count = bitmap_count_ones(self.bitmap.unsafe_ptr(), self.bitmap.size)
         return self.length - valid_count
 
     fn to_device(self, ctx: DeviceContext) raises -> PrimitiveArray[Self.T]:
@@ -336,7 +318,7 @@ struct StringArray(Movable, Sized):
 
     var length: Int
     var offset: Int
-    var bitmap: Bitmap
+    var bitmap: Buffer
     var offsets: Buffer
     var values: Buffer
 
@@ -367,7 +349,7 @@ struct StringArray(Movable, Sized):
 
     fn is_valid(self, index: Int) -> Bool:
         """Return True if the element at the given index is not null."""
-        return self.bitmap.unsafe_get(index)
+        return bitmap_get(self.bitmap.unsafe_ptr(), index + self.offset)
 
     fn unsafe_get[
         self_origin: Origin[mut=False], //
@@ -411,7 +393,7 @@ struct ListArray(Movable, Sized):
     var dtype: DataType
     var length: Int
     var offset: Int
-    var bitmap: Bitmap
+    var bitmap: Buffer
     var offsets: Buffer
     var values: Array
 
@@ -436,7 +418,7 @@ struct ListArray(Movable, Sized):
         return self.length
 
     fn is_valid(self, index: Int) -> Bool:
-        return self.bitmap.unsafe_get(index)
+        return bitmap_get(self.bitmap.unsafe_ptr(), index + self.offset)
 
     fn unsafe_get(self, index: Int, out array_data: Array) raises:
         """Access the value at a given index in the list array.
@@ -467,7 +449,7 @@ struct FixedSizeListArray(Movable, Sized):
     var dtype: DataType
     var length: Int
     var offset: Int
-    var bitmap: Bitmap
+    var bitmap: Buffer
     var values: Array
 
     fn __init__(out self, ref data: Array) raises:
@@ -492,7 +474,7 @@ struct FixedSizeListArray(Movable, Sized):
         return self.length
 
     fn is_valid(self, index: Int) -> Bool:
-        return self.bitmap.unsafe_get(index)
+        return bitmap_get(self.bitmap.unsafe_ptr(), index + self.offset)
 
     fn unsafe_get(self, index: Int, out array_data: Array) raises:
         var list_size = self.dtype.size
@@ -535,7 +517,7 @@ struct StructArray(Movable, Sized):
 
     var dtype: DataType
     var length: Int
-    var bitmap: Bitmap
+    var bitmap: Buffer
     var children: List[Array]
 
     fn __init__(out self, *, ref data: Array):
@@ -607,14 +589,14 @@ struct ChunkedArray(Stringable):
 
     fn combine_chunks(var self, out combined: Array):
         """Combines all chunks into a single array."""
-        var bitmap = BitmapBuilder.alloc(self.length)
+        var bitmap = BufferBuilder.alloc_bits(self.length)
         var buffers = List[Buffer]()
         var children = List[Array]()
         var start = 0
         while self.chunks:
             var chunk = self.chunks.pop(0)
             var chunk_length = chunk.length
-            bitmap.extend(chunk.bitmap, start, chunk_length)
+            bitmap_extend(bitmap.ptr, chunk.bitmap.unsafe_ptr(), start, chunk_length)
             for i in range(len(chunk.buffers)):
                 buffers.append(chunk.buffers[i])
             for i in range(len(chunk.children)):

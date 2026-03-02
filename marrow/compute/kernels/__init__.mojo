@@ -50,7 +50,7 @@ from gpu import global_idx
 from gpu.host import DeviceContext
 
 from marrow.arrays import PrimitiveArray, Array
-from marrow.buffers import Buffer, Bitmap, BitmapBuilder, BufferBuilder, MemorySpace
+from marrow.buffers import Buffer, BufferBuilder, MemorySpace, bitmap_range_set
 from marrow.builders import PrimitiveBuilder
 from marrow.dtypes import DataType, all_numeric_dtypes, materialize
 
@@ -60,7 +60,7 @@ from marrow.dtypes import DataType, all_numeric_dtypes, materialize
 # ---------------------------------------------------------------------------
 
 
-fn bitmap_and(a: Bitmap, b: Bitmap, length: Int) -> Bitmap:
+fn bitmap_and(a: Buffer, b: Buffer, length: Int) -> Buffer:
     """Compute the output validity bitmap as the bitwise AND of two input bitmaps.
 
     Output bit i is True iff both a[i] and b[i] are True (valid).
@@ -68,23 +68,23 @@ fn bitmap_and(a: Bitmap, b: Bitmap, length: Int) -> Bitmap:
     which is the common case for freshly constructed arrays.
 
     Args:
-        a: First input bitmap.
-        b: Second input bitmap.
+        a: First input bitmap buffer.
+        b: Second input bitmap buffer.
         length: Number of bits (array elements) to process.
 
     Returns:
-        A new Bitmap where result[i] = a[i] AND b[i].
+        A new Buffer where result[i] = a[i] AND b[i] (bit-packed).
     """
     var byte_count = math.ceildiv(length, 8)
-    var result = BitmapBuilder.alloc(length)
+    var result = BufferBuilder.alloc_bits(length)
 
     comptime width = simd_byte_width()
     var i = 0
     while i + width <= byte_count:
-        result.simd_store[width](i, a.simd_load[width](i) & b.simd_load[width](i))
+        result.simd_store[DType.uint8, width](i, a.simd_load[DType.uint8, width](i) & b.simd_load[DType.uint8, width](i))
         i += width
     while i < byte_count:
-        result.buffer.unsafe_set(i, a.buffer.unsafe_get(i) & b.buffer.unsafe_get(i))
+        result.unsafe_set[DType.uint8](i, a.unsafe_get[DType.uint8](i) & b.unsafe_get[DType.uint8](i))
         i += 1
 
     return result^.freeze()
@@ -150,7 +150,7 @@ fn unary_simd[
     comptime width = simd_byte_width() // size_of[native]()
     var length = len(array)
 
-    var bm = Bitmap(copy=array.bitmap)
+    var bm = array.bitmap
     var buf = BufferBuilder.alloc[native](length)
 
     var i = 0
@@ -445,8 +445,8 @@ fn binary_gpu[
         block_dim=BLOCK_SIZE,
     )
 
-    var bm = BitmapBuilder.alloc(length)
-    bm.unsafe_range_set(0, length, True)
+    var bm = BufferBuilder.alloc_bits(length)
+    bitmap_range_set(bm.ptr, 0, length, True)
     var device_bytes = length * size_of[native]()
     var buf = Buffer.device_only(
         out_dev.create_sub_buffer[DType.uint8](0, device_bytes), device_bytes

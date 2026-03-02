@@ -43,7 +43,7 @@ def test_primitive_array_from_pyarrow():
 
     var data = c_array^.to_array(dtype)
     var array = data^.as_int64()
-    assert_equal(array.bitmap.size(), 64)
+    assert_equal(array.bitmap.size, 64)
     assert_equal(array.is_valid(0), True)
     assert_equal(array.is_valid(1), True)
     assert_equal(array.is_valid(2), True)
@@ -79,7 +79,7 @@ def test_binary_array_from_pyarrow():
     var data = c_array^.to_array(dtype)
     var array = data^.as_string()
 
-    assert_equal(array.bitmap.size(), 64)
+    assert_equal(array.bitmap.size, 64)
     assert_equal(array.is_valid(0), True)
     assert_equal(array.is_valid(1), True)
     assert_equal(array.is_valid(2), False)
@@ -115,7 +115,7 @@ def test_list_array_from_pyarrow():
     var data = c_array^.to_array(dtype)
     var array = data^.as_list()
 
-    assert_equal(array.bitmap.size(), 64)
+    assert_equal(array.bitmap.size, 64)
     assert_equal(array.is_valid(0), True)
     assert_equal(array.is_valid(1), False)
     assert_equal(array.is_valid(2), True)

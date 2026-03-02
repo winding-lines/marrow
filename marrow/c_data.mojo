@@ -1,7 +1,7 @@
 from ffi import external_call, c_char
 from memory import ArcPointer, memcpy
 from sys import size_of
-from .buffers import Allocation, BitmapBuilder
+from .buffers import Allocation, Buffer, BufferBuilder, bitmap_range_set
 
 import math
 from python import Python, PythonObject
@@ -251,7 +251,7 @@ struct CArrowArray(Movable):
     ) raises -> Array:
         """Build an Array from this CArrowArray, all buffers sharing one keeper.
 
-        All Buffer / Bitmap views hold a copy of `keeper` (an ArcPointer, so
+        All Buffer views hold a copy of `keeper` (an ArcPointer, so
         copying just bumps the ref-count).  The C release callback fires
         automatically once the last buffer is dropped.
         """
@@ -259,14 +259,14 @@ struct CArrowArray(Movable):
         # raw C buffers start at element 0 regardless of the logical array offset.
         var length = self.length + self.offset
 
-        var bitmap: Bitmap
+        var bitmap: Buffer
         if self.buffers[0]:
-            bitmap = Bitmap.foreign_view(self.buffers[0], length, keeper)
+            bitmap = Buffer.foreign_view(self.buffers[0], math.ceildiv(Int(length), 8), DType.uint8, keeper)
         else:
             # bitmaps are allowed to be nullptrs by the specification; in this
             # case we allocate a new owned buffer to hold the validity bitmap.
-            var bm = BitmapBuilder.alloc(self.length)
-            bm.unsafe_range_set(0, self.length, True)
+            var bm = BufferBuilder.alloc_bits(Int(self.length))
+            bitmap_range_set(bm.ptr, 0, Int(self.length), True)
             bitmap = bm^.freeze()
 
         var buffers = List[Buffer]()
@@ -285,8 +285,8 @@ struct CArrowArray(Movable):
                         self.n_children
                     )
                 )
-            var values = Bitmap.foreign_view(self.buffers[1], length, keeper)
-            buffers.append(Buffer(values^))
+            var values = Buffer.foreign_view(self.buffers[1], math.ceildiv(Int(length), 8), DType.uint8, keeper)
+            buffers.append(values^)
         elif dtype.is_primitive():
             if self.n_buffers != 2:
                 raise Error(

@@ -1,6 +1,7 @@
 from testing import assert_equal, TestSuite
 
 from marrow.arrays import *
+from marrow.buffers import bitmap_range_set, bitmap_set
 from marrow.builders import PrimitiveBuilder, StringBuilder, StructBuilder
 from marrow.dtypes import *
 from marrow.pretty import ArrayPrinter
@@ -77,7 +78,7 @@ def test_format_list_of_list():
             "ListArray([ListArray([PrimitiveArray[int16]([1,"
             " 2]), PrimitiveArray[int16]([3, 4])]),"
             " ListArray([PrimitiveArray[int16]([5, 6, 7]),"
-            " PrimitiveArray[int16]([]),"
+            " NULL,"
             " PrimitiveArray[int16]([8])]),"
             " ListArray([PrimitiveArray[int16]([9, 10])]), ...])"
         ),
@@ -148,7 +149,7 @@ def test_format_empty_array():
 def test_format_all_nulls():
     var b = PrimitiveBuilder[int32](3)
     b.length = 3
-    b.bitmap.unsafe_range_set(0, 3, False)
+    bitmap_range_set(b.bitmap.ptr, 0, 3, False)
     assert_equal(
         _fmt(Array(b^.freeze())),
         "PrimitiveArray[int32]([NULL, NULL, NULL])",
@@ -159,7 +160,7 @@ def test_format_mixed_nulls():
     var b = PrimitiveBuilder[int32](5)
     b.append(1)
     b.append(2)
-    b.bitmap.unsafe_set(2, False)
+    bitmap_set(b.bitmap.ptr, 2, False)
     b.length = 3
     b.append(4)
     assert_equal(

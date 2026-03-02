@@ -21,7 +21,7 @@ Example
 
 from memory import memcpy
 from sys import size_of
-from .buffers import Buffer, BufferBuilder, Bitmap, BitmapBuilder, MemorySpace
+from .buffers import Buffer, BufferBuilder, MemorySpace, bitmap_set, bitmap_range_set
 from .dtypes import *
 from .arrays import (
     Array,
@@ -40,19 +40,19 @@ struct BoolBuilder(Movable, Sized):
     var length: Int
     var offset: Int
     var capacity: Int
-    var bitmap: BitmapBuilder
-    var values: BitmapBuilder
+    var bitmap: BufferBuilder
+    var values: BufferBuilder
 
     fn __init__(out self, capacity: Int = 0, offset: Int = 0):
         self.capacity = capacity
         self.length = 0
         self.offset = offset
-        self.bitmap = BitmapBuilder.alloc(capacity)
-        self.values = BitmapBuilder.alloc(capacity)
+        self.bitmap = BufferBuilder.alloc_bits(capacity)
+        self.values = BufferBuilder.alloc_bits(capacity)
 
     fn resize(mut self, capacity: Int):
-        self.bitmap.resize(capacity)
-        self.values.resize(capacity)
+        self.bitmap.resize_bits(capacity)
+        self.values.resize_bits(capacity)
         self.capacity = capacity
 
     @always_inline
@@ -61,8 +61,8 @@ struct BoolBuilder(Movable, Sized):
 
     @always_inline
     fn unsafe_set(mut self, index: Int, value: Bool):
-        self.bitmap.unsafe_set(index + self.offset, True)
-        self.values.unsafe_set(index + self.offset, value)
+        bitmap_set(self.bitmap.ptr, index + self.offset, True)
+        bitmap_set(self.values.ptr, index + self.offset, value)
 
     @always_inline
     fn unsafe_append(mut self, value: Bool):
@@ -71,7 +71,7 @@ struct BoolBuilder(Movable, Sized):
 
     @always_inline
     fn unsafe_append_null(mut self):
-        self.bitmap.unsafe_set(self.length + self.offset, False)
+        bitmap_set(self.bitmap.ptr, self.length + self.offset, False)
         self.length += 1
 
     fn __setitem__(mut self, index: Int, value: Bool) raises:
@@ -89,8 +89,8 @@ struct BoolBuilder(Movable, Sized):
         if self.length == self.capacity and self.offset == 0:
             return
 
-        self.values.resize(self.length, self.offset)
-        self.bitmap.resize(self.length, self.offset)
+        self.values.resize_bits(self.length, self.offset)
+        self.bitmap.resize_bits(self.length, self.offset)
         self.offset = 0
         self.capacity = self.length
 
@@ -125,18 +125,18 @@ struct PrimitiveBuilder[T: DataType](Movable, Sized):
     var length: Int
     var offset: Int
     var capacity: Int
-    var bitmap: BitmapBuilder
+    var bitmap: BufferBuilder
     var buffer: BufferBuilder
 
     fn __init__(out self, capacity: Int = 0, offset: Int = 0):
         self.capacity = capacity
         self.length = 0
         self.offset = offset
-        self.bitmap = BitmapBuilder.alloc(capacity)
+        self.bitmap = BufferBuilder.alloc_bits(capacity)
         self.buffer = BufferBuilder.alloc[Self.T.native](capacity)
 
     fn resize(mut self, capacity: Int):
-        self.bitmap.resize(capacity)
+        self.bitmap.resize_bits(capacity)
         self.buffer.resize[Self.T.native](capacity)
         self.capacity = capacity
 
@@ -146,7 +146,7 @@ struct PrimitiveBuilder[T: DataType](Movable, Sized):
 
     @always_inline
     fn unsafe_set(mut self, index: Int, value: Self.scalar):
-        self.bitmap.unsafe_set(index + self.offset, True)
+        bitmap_set(self.bitmap.ptr, index + self.offset, True)
         self.buffer.unsafe_set[Self.T.native](index + self.offset, value)
 
     @always_inline
@@ -156,7 +156,7 @@ struct PrimitiveBuilder[T: DataType](Movable, Sized):
 
     @always_inline
     fn unsafe_append_null(mut self):
-        self.bitmap.unsafe_set(self.length + self.offset, False)
+        bitmap_set(self.bitmap.ptr, self.length + self.offset, False)
         self.length += 1
 
     fn __setitem__(mut self, index: Int, value: Self.scalar) raises:
@@ -175,7 +175,7 @@ struct PrimitiveBuilder[T: DataType](Movable, Sized):
             return
 
         self.buffer.resize[Self.T.native](self.length, self.offset)
-        self.bitmap.resize(self.length, self.offset)
+        self.bitmap.resize_bits(self.length, self.offset)
         self.offset = 0
         self.capacity = self.length
 
@@ -207,7 +207,7 @@ struct StringBuilder(Movable, Sized):
     var length: Int
     var offset: Int
     var capacity: Int
-    var bitmap: BitmapBuilder
+    var bitmap: BufferBuilder
     var offsets: BufferBuilder
     var values: BufferBuilder
 
@@ -216,7 +216,7 @@ struct StringBuilder(Movable, Sized):
         self.capacity = capacity
         self.length = 0
         self.offset = 0
-        self.bitmap = BitmapBuilder.alloc(capacity)
+        self.bitmap = BufferBuilder.alloc_bits(capacity)
         self.offsets = BufferBuilder.alloc[DType.uint32](capacity + 1)
         self.values = BufferBuilder.alloc[DType.uint8](capacity)
         self.offsets.unsafe_set[DType.uint32](0, 0)
@@ -226,7 +226,7 @@ struct StringBuilder(Movable, Sized):
 
     fn resize(mut self, capacity: Int):
         """Resize the bitmap and offsets buffers to the given capacity."""
-        self.bitmap.resize(capacity)
+        self.bitmap.resize_bits(capacity)
         self.offsets.resize[DType.uint32](capacity + 1)
         self.capacity = capacity
 
@@ -236,7 +236,7 @@ struct StringBuilder(Movable, Sized):
         var last_offset = self.offsets.ptr.bitcast[UInt32]()[index]
         var next_offset = last_offset + UInt32(len(value))
         self.length += 1
-        self.bitmap.unsafe_set(index, True)
+        bitmap_set(self.bitmap.ptr, index, True)
         self.offsets.unsafe_set[DType.uint32](index + 1, next_offset)
         self.values.resize[DType.uint8](next_offset)
         var dst_address = self.values.ptr + Int(last_offset)
@@ -260,7 +260,7 @@ struct StringBuilder(Movable, Sized):
             self.offsets.unsafe_set[DType.uint32](i, UInt32(off - start_byte))
 
         self.values.resize(end_byte - start_byte, start_byte)
-        self.bitmap.resize(self.length, self.offset)
+        self.bitmap.resize_bits(self.length, self.offset)
         self.offset = 0
         self.capacity = self.length
 
@@ -283,7 +283,7 @@ struct ListBuilder(Movable, Sized):
     var length: Int
     var offset: Int
     var capacity: Int
-    var bitmap: BitmapBuilder
+    var bitmap: BufferBuilder
     var offsets: BufferBuilder
     var values: Array
 
@@ -293,7 +293,7 @@ struct ListBuilder(Movable, Sized):
         length: Int,
         offset: Int,
         capacity: Int,
-        var bitmap: BitmapBuilder,
+        var bitmap: BufferBuilder,
         var offsets: BufferBuilder,
         var values: Array,
     ):
@@ -318,8 +318,8 @@ struct ListBuilder(Movable, Sized):
         """
         var length = values.length
 
-        var bitmap = BitmapBuilder.alloc(capacity)
-        bitmap.unsafe_set(0, True)
+        var bitmap = BufferBuilder.alloc_bits(capacity)
+        bitmap_set(bitmap.ptr, 0, True)
         var offsets = BufferBuilder.alloc[DType.uint32](capacity + 1)
         offsets.unsafe_set[DType.uint32](0, 0)
         offsets.unsafe_set[DType.uint32](1, UInt32(length))
@@ -339,7 +339,7 @@ struct ListBuilder(Movable, Sized):
         return self.length
 
     fn unsafe_append(mut self, is_valid: Bool):
-        self.bitmap.unsafe_set(self.length, is_valid)
+        bitmap_set(self.bitmap.ptr, self.length, is_valid)
         self.offsets.unsafe_set[DType.uint32](
             self.length + 1, UInt32(self.values.length)
         )
@@ -351,7 +351,7 @@ struct ListBuilder(Movable, Sized):
             return
 
         self.offsets.resize[DType.uint32](self.length + 1, self.offset)
-        self.bitmap.resize(self.length, self.offset)
+        self.bitmap.resize_bits(self.length, self.offset)
         self.offset = 0
         self.capacity = self.length
 
@@ -375,7 +375,7 @@ struct FixedSizeListBuilder(Movable, Sized):
     var length: Int
     var offset: Int
     var capacity: Int
-    var bitmap: BitmapBuilder
+    var bitmap: BufferBuilder
     var values: Array
 
     fn __init__(
@@ -384,7 +384,7 @@ struct FixedSizeListBuilder(Movable, Sized):
         length: Int,
         offset: Int,
         capacity: Int,
-        var bitmap: BitmapBuilder,
+        var bitmap: BufferBuilder,
         var values: Array,
     ):
         self.dtype = dtype^
@@ -413,8 +413,8 @@ struct FixedSizeListBuilder(Movable, Sized):
             )
         var n_lists = values.length // list_size
 
-        var bitmap = BitmapBuilder.alloc(max(n_lists, capacity))
-        bitmap.unsafe_range_set(0, n_lists, True)
+        var bitmap = BufferBuilder.alloc_bits(max(n_lists, capacity))
+        bitmap_range_set(bitmap.ptr, 0, n_lists, True)
 
         var fsl_dtype = fixed_size_list_(values.dtype.copy(), list_size)
         return FixedSizeListBuilder(
@@ -430,13 +430,13 @@ struct FixedSizeListBuilder(Movable, Sized):
         return self.length
 
     fn unsafe_append(mut self, is_valid: Bool):
-        self.bitmap.unsafe_set(self.length, is_valid)
+        bitmap_set(self.bitmap.ptr, self.length, is_valid)
         self.length += 1
 
     fn shrink_to_fit(mut self):
         if self.length == self.capacity and self.offset == 0:
             return
-        self.bitmap.resize(self.length, self.offset)
+        self.bitmap.resize_bits(self.length, self.offset)
         self.offset = 0
         self.capacity = self.length
 
@@ -458,7 +458,7 @@ struct StructBuilder(Movable, Sized):
     var dtype: DataType
     var length: Int
     var capacity: Int
-    var bitmap: BitmapBuilder
+    var bitmap: BufferBuilder
     var children: List[Array]
 
     fn __init__(
@@ -466,8 +466,8 @@ struct StructBuilder(Movable, Sized):
         var fields: List[Field],
         capacity: Int = 0,
     ):
-        var bitmap = BitmapBuilder.alloc(capacity)
-        bitmap.unsafe_range_set(0, capacity, True)
+        var bitmap = BufferBuilder.alloc_bits(capacity)
+        bitmap_range_set(bitmap.ptr, 0, capacity, True)
 
         self.dtype = struct_(fields)
         self.capacity = capacity
