@@ -50,10 +50,12 @@ fn _mod[T: DType, W: Int](a: SIMD[T, W], b: SIMD[T, W]) -> SIMD[T, W]:
 
 
 fn _min[T: DType, W: Int](a: SIMD[T, W], b: SIMD[T, W]) -> SIMD[T, W]:
+    # TODO(kszucs): consider return (a < b).select(a, b)
     return math.min(a, b)
 
 
 fn _max[T: DType, W: Int](a: SIMD[T, W], b: SIMD[T, W]) -> SIMD[T, W]:
+    # TODO(kszucs): consider return (a > b).select(a, b)
     return math.max(a, b)
 
 

@@ -22,7 +22,17 @@ Kernel tiers for binary array → array operations
   - `binary_gpu` — GPU kernel launch via DeviceContext; not all kernels need this.
 
 For reductions (array → scalar):
-  - `reduce` — accumulates over valid (non-null) elements only.
+  - `reduce` — scalar accumulation over valid (non-null) elements only.
+  - `reduce_simd` — SIMD-vectorized reduction using SIMD accumulators and
+    Mojo's horizontal reduction methods (reduce_add, reduce_min, etc.).
+    Null slots are blended with the identity value rather than branched over,
+    keeping the SIMD loop branch-free.
+
+NOTE: `reduce_gpu` is intentionally absent. Reductions are low arithmetic
+intensity (≤1 FLOP/element for sum), and GPU tree-reduction logic is complex.
+CPU SIMD wins here — the same guidance as element-wise add. Only consider a
+GPU reduction when data is already device-resident and a round-trip is
+prohibitively expensive.
 
 TODO: Add scalar operand support — broadcasting a single scalar value to match
       an array's length. Currently all kernels require two equal-length array
@@ -32,6 +42,7 @@ TODO: binary_gpu does not propagate null bitmaps; GPU-side bitmap_and is not
 """
 
 import math
+from math import iota
 from sys import size_of, has_accelerator
 from sys.info import simd_byte_width
 
@@ -269,6 +280,99 @@ fn reduce[
         if array.is_valid(i):
             acc = func(acc, array.unsafe_get(i))
     return acc
+
+
+# ---------------------------------------------------------------------------
+# SIMD reduction arity helpers
+# ---------------------------------------------------------------------------
+
+
+fn _bitmap_mask[dtype: DType, W: Int](
+    bp: UnsafePointer[UInt8], abs_pos: Int
+) -> SIMD[DType.bool, W]:
+    """Expand W consecutive bitmap bits starting at abs_pos into a SIMD bool vector.
+
+    Each lane j of the result is True iff bit (abs_pos + j) is set in the bitmap.
+    Uses a uint32 window that covers up to 24 bits (3 bytes), sufficient for any
+    combination of W <= 16 and bit_off 0..7.
+    """
+    var byte_idx = abs_pos >> 3
+    var bit_off = abs_pos & 7
+
+    # Build a uint32 window containing all W bits starting at bit abs_pos.
+    # Read the second (and third) byte only when bits spill past the first.
+    var bits = UInt32(bp[byte_idx])
+    if bit_off + W > 8:
+        bits |= UInt32(bp[byte_idx + 1]) << 8
+    if bit_off + W > 16:
+        bits |= UInt32(bp[byte_idx + 2]) << 16
+    bits >>= UInt32(bit_off)
+
+    return ((SIMD[DType.uint32, W](bits) >> iota[DType.uint32, W]()) & 1).cast[
+        DType.bool
+    ]()
+
+
+fn reduce_simd[
+    T: DataType,
+    combine: fn[W: Int](SIMD[T.native, W], SIMD[T.native, W]) -> SIMD[T.native, W],
+    horizontal: fn[W: Int](SIMD[T.native, W]) -> Scalar[T.native],
+](array: PrimitiveArray[T], initial: Scalar[T.native]) -> Scalar[T.native]:
+    """SIMD-vectorized reduction: accumulates over valid (non-null) elements.
+
+    Two-phase approach:
+      1. Main loop: accumulate W elements at a time via SIMD vectors. Null slots
+         are replaced with `initial` (the identity element) via bitmap blending, so
+         they contribute nothing to the result (e.g., 0 for sum, MAX for min, etc.).
+      2. Horizontal: collapse the SIMD[T, W] accumulator to a scalar via `horizontal`.
+      3. Scalar tail: handles the remaining < W elements with per-element null checks,
+         reusing `combine[1]` since Scalar[T] == SIMD[T, 1].
+
+    For the common case (offset=0, no nulls), the main loop is branchless:
+    - bit_off is always 0, so _bitmap_mask reads exactly 1 or 2 bitmap bytes.
+    - identity_vec blending collapses to a no-op when all lanes are valid.
+
+    Parameters:
+        T: Array DataType (same for input and accumulator).
+        combine: fn[W](acc, val) -> acc, called with W for the main loop and W=1
+                 for the scalar tail.  Since Scalar[T] == SIMD[T, 1], the same
+                 function works for both.
+        horizontal: fn[W](SIMD[T, W]) -> Scalar[T], applied once to collapse the
+                    SIMD accumulator at the end of the main loop.  Wrap Mojo's
+                    built-in SIMD methods: v.reduce_add(), v.reduce_min(), etc.
+
+    Args:
+        array: Input array.
+        initial: Initial accumulator value AND identity for null blending.
+                 Use 0 for sum, Scalar[T].MAX for min, Scalar[T].MIN for max.
+
+    Returns:
+        Accumulated scalar result. Returns `initial` if empty or all null.
+    """
+    comptime native = T.native
+    comptime width = simd_byte_width() // size_of[native]()
+    var length = len(array)
+    var ap = array.buffer.unsafe_ptr[native](array.offset)
+    var bp = array.bitmap.unsafe_ptr()
+
+    var acc = SIMD[native, width](initial)
+    var identity_vec = SIMD[native, width](initial)
+    var i = 0
+
+    while i + width <= length:
+        var vec = (ap + i).load[width=width]()
+        var mask = _bitmap_mask[native, width](bp, array.offset + i)
+        acc = combine[width](acc, mask.select(vec, identity_vec))
+        i += width
+
+    var result = horizontal[width](acc)
+
+    while i < length:
+        if array.is_valid(i):
+            result = combine[1](result, ap[i])
+        i += 1
+
+    return result
 
 
 # ---------------------------------------------------------------------------
