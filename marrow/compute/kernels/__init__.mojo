@@ -391,10 +391,10 @@ fn binary_gpu[
     func: fn[W: Int](SIMD[T.native, W], SIMD[T.native, W]) -> SIMD[T.native, W],
     name: StringLiteral = "",
 ](
-    left: PrimitiveArray[T, MemorySpace.DEVICE],
-    right: PrimitiveArray[T, MemorySpace.DEVICE],
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
     ctx: DeviceContext,
-) raises -> PrimitiveArray[T, MemorySpace.DEVICE]:
+) raises -> PrimitiveArray[T]:
     """GPU orchestrator: launches binary_gpu_kernel and returns a device array.
 
     Parameters:
@@ -448,10 +448,10 @@ fn binary_gpu[
     var bm = BitmapBuilder.alloc(length)
     bm.unsafe_range_set(0, length, True)
     var device_bytes = length * size_of[native]()
-    var buf = Buffer[MemorySpace.DEVICE].device_only(
+    var buf = Buffer.device_only(
         out_dev.create_sub_buffer[DType.uint8](0, device_bytes), device_bytes
     )
-    return PrimitiveArray[T, MemorySpace.DEVICE](
+    return PrimitiveArray[T](
         length=length,
         offset=0,
         bitmap=bm^.freeze().to_device(ctx),
@@ -468,9 +468,9 @@ fn binary_array_dispatch[
     name: StringLiteral,
     func: fn[T: DataType](PrimitiveArray[T], PrimitiveArray[T]) raises -> PrimitiveArray[T],
 ](
-    left: Array[MemorySpace.CPU],
-    right: Array[MemorySpace.CPU],
-) raises -> Array[MemorySpace.CPU]:
+    left: Array,
+    right: Array,
+) raises -> Array:
     """Runtime-typed binary dispatch: checks dtype match, loops over numeric types.
 
     Parameters:

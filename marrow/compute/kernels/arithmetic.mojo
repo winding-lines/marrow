@@ -13,7 +13,7 @@ import math
 from gpu.host import DeviceContext
 
 from marrow.arrays import PrimitiveArray, Array
-from marrow.buffers import MemorySpace
+
 from marrow.dtypes import DataType
 from . import binary_simd, binary_gpu, unary_simd, binary_array_dispatch
 
@@ -94,10 +94,10 @@ fn add[
 fn add[
     T: DataType
 ](
-    left: PrimitiveArray[T, MemorySpace.DEVICE],
-    right: PrimitiveArray[T, MemorySpace.DEVICE],
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
     ctx: DeviceContext,
-) raises -> PrimitiveArray[T, MemorySpace.DEVICE]:
+) raises -> PrimitiveArray[T]:
     """Element-wise addition on device-resident arrays.
 
     Args:
@@ -112,8 +112,8 @@ fn add[
 
 
 fn add(
-    left: Array[MemorySpace.CPU], right: Array[MemorySpace.CPU]
-) raises -> Array[MemorySpace.CPU]:
+    left: Array, right: Array
+) raises -> Array:
     """Runtime-typed add."""
     return binary_array_dispatch["add", add](left, right)
 
@@ -142,17 +142,17 @@ fn sub[
 fn sub[
     T: DataType
 ](
-    left: PrimitiveArray[T, MemorySpace.DEVICE],
-    right: PrimitiveArray[T, MemorySpace.DEVICE],
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
     ctx: DeviceContext,
-) raises -> PrimitiveArray[T, MemorySpace.DEVICE]:
+) raises -> PrimitiveArray[T]:
     """Element-wise subtraction on device-resident arrays."""
     return binary_gpu[T, _sub[T.native], "sub"](left, right, ctx)
 
 
 fn sub(
-    left: Array[MemorySpace.CPU], right: Array[MemorySpace.CPU]
-) raises -> Array[MemorySpace.CPU]:
+    left: Array, right: Array
+) raises -> Array:
     """Runtime-typed sub."""
     return binary_array_dispatch["sub", sub](left, right)
 
@@ -181,17 +181,17 @@ fn mul[
 fn mul[
     T: DataType
 ](
-    left: PrimitiveArray[T, MemorySpace.DEVICE],
-    right: PrimitiveArray[T, MemorySpace.DEVICE],
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
     ctx: DeviceContext,
-) raises -> PrimitiveArray[T, MemorySpace.DEVICE]:
+) raises -> PrimitiveArray[T]:
     """Element-wise multiplication on device-resident arrays."""
     return binary_gpu[T, _mul[T.native], "mul"](left, right, ctx)
 
 
 fn mul(
-    left: Array[MemorySpace.CPU], right: Array[MemorySpace.CPU]
-) raises -> Array[MemorySpace.CPU]:
+    left: Array, right: Array
+) raises -> Array:
     """Runtime-typed mul."""
     return binary_array_dispatch["mul", mul](left, right)
 
@@ -220,17 +220,17 @@ fn div[
 fn div[
     T: DataType
 ](
-    left: PrimitiveArray[T, MemorySpace.DEVICE],
-    right: PrimitiveArray[T, MemorySpace.DEVICE],
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
     ctx: DeviceContext,
-) raises -> PrimitiveArray[T, MemorySpace.DEVICE]:
+) raises -> PrimitiveArray[T]:
     """Element-wise true division on device-resident arrays."""
     return binary_gpu[T, _div[T.native], "div"](left, right, ctx)
 
 
 fn div(
-    left: Array[MemorySpace.CPU], right: Array[MemorySpace.CPU]
-) raises -> Array[MemorySpace.CPU]:
+    left: Array, right: Array
+) raises -> Array:
     """Runtime-typed div."""
     return binary_array_dispatch["div", div](left, right)
 
@@ -259,10 +259,10 @@ fn floordiv[
 fn floordiv[
     T: DataType
 ](
-    left: PrimitiveArray[T, MemorySpace.DEVICE],
-    right: PrimitiveArray[T, MemorySpace.DEVICE],
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
     ctx: DeviceContext,
-) raises -> PrimitiveArray[T, MemorySpace.DEVICE]:
+) raises -> PrimitiveArray[T]:
     """Element-wise floor division on device-resident arrays."""
 
     comptime if has_accelerator():
@@ -272,8 +272,8 @@ fn floordiv[
 
 
 fn floordiv(
-    left: Array[MemorySpace.CPU], right: Array[MemorySpace.CPU]
-) raises -> Array[MemorySpace.CPU]:
+    left: Array, right: Array
+) raises -> Array:
     """Runtime-typed floordiv."""
     return binary_array_dispatch["floordiv", floordiv](left, right)
 
@@ -302,17 +302,17 @@ fn mod[
 fn mod[
     T: DataType
 ](
-    left: PrimitiveArray[T, MemorySpace.DEVICE],
-    right: PrimitiveArray[T, MemorySpace.DEVICE],
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
     ctx: DeviceContext,
-) raises -> PrimitiveArray[T, MemorySpace.DEVICE]:
+) raises -> PrimitiveArray[T]:
     """Element-wise modulo on device-resident arrays."""
     return binary_gpu[T, _mod[T.native], "mod"](left, right, ctx)
 
 
 fn mod(
-    left: Array[MemorySpace.CPU], right: Array[MemorySpace.CPU]
-) raises -> Array[MemorySpace.CPU]:
+    left: Array, right: Array
+) raises -> Array:
     """Runtime-typed mod."""
     return binary_array_dispatch["mod", mod](left, right)
 
@@ -341,17 +341,17 @@ fn min_[
 fn min_[
     T: DataType
 ](
-    left: PrimitiveArray[T, MemorySpace.DEVICE],
-    right: PrimitiveArray[T, MemorySpace.DEVICE],
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
     ctx: DeviceContext,
-) raises -> PrimitiveArray[T, MemorySpace.DEVICE]:
+) raises -> PrimitiveArray[T]:
     """Element-wise minimum on device-resident arrays."""
     return binary_gpu[T, _min[T.native], "min_"](left, right, ctx)
 
 
 fn min_(
-    left: Array[MemorySpace.CPU], right: Array[MemorySpace.CPU]
-) raises -> Array[MemorySpace.CPU]:
+    left: Array, right: Array
+) raises -> Array:
     """Runtime-typed min_."""
     return binary_array_dispatch["min_", min_](left, right)
 
@@ -380,17 +380,17 @@ fn max_[
 fn max_[
     T: DataType
 ](
-    left: PrimitiveArray[T, MemorySpace.DEVICE],
-    right: PrimitiveArray[T, MemorySpace.DEVICE],
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
     ctx: DeviceContext,
-) raises -> PrimitiveArray[T, MemorySpace.DEVICE]:
+) raises -> PrimitiveArray[T]:
     """Element-wise maximum on device-resident arrays."""
     return binary_gpu[T, _max[T.native], "max_"](left, right, ctx)
 
 
 fn max_(
-    left: Array[MemorySpace.CPU], right: Array[MemorySpace.CPU]
-) raises -> Array[MemorySpace.CPU]:
+    left: Array, right: Array
+) raises -> Array:
     """Runtime-typed max_."""
     return binary_array_dispatch["max_", max_](left, right)
 

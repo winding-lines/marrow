@@ -120,12 +120,12 @@ fn _cosine_similarity_gpu_kernel[
 fn _cosine_similarity_gpu[
     T: DataType
 ](
-    vectors: FixedSizeListArray[MemorySpace.DEVICE],
-    query: PrimitiveArray[T, MemorySpace.DEVICE],
+    vectors: FixedSizeListArray,
+    query: PrimitiveArray[T],
     n_vectors: Int,
     dim: Int,
     ctx: DeviceContext,
-) raises -> PrimitiveArray[T, MemorySpace.DEVICE]:
+) raises -> PrimitiveArray[T]:
     """GPU-accelerated batch cosine similarity on device-resident data."""
     comptime native = T.native
     comptime BLOCK_SIZE = 256
@@ -157,10 +157,10 @@ fn _cosine_similarity_gpu[
     var bm = BitmapBuilder.alloc(n_vectors)
     bm.unsafe_range_set(0, n_vectors, True)
     var device_bytes = n_vectors * size_of[native]()
-    var buf = Buffer[MemorySpace.DEVICE].device_only(
+    var buf = Buffer.device_only(
         out_dev.create_sub_buffer[DType.uint8](0, device_bytes), device_bytes
     )
-    return PrimitiveArray[T, MemorySpace.DEVICE](
+    return PrimitiveArray[T](
         length=n_vectors,
         offset=0,
         bitmap=bm^.freeze().to_device(ctx),
@@ -204,10 +204,10 @@ fn cosine_similarity[
 fn cosine_similarity[
     T: DataType
 ](
-    vectors: FixedSizeListArray[MemorySpace.DEVICE],
-    query: PrimitiveArray[T, MemorySpace.DEVICE],
+    vectors: FixedSizeListArray,
+    query: PrimitiveArray[T],
     ctx: DeviceContext,
-) raises -> PrimitiveArray[T, MemorySpace.DEVICE]:
+) raises -> PrimitiveArray[T]:
     """GPU-accelerated batch cosine similarity on device-resident data.
 
     Args:

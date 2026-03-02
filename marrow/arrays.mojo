@@ -21,7 +21,7 @@ from .dtypes import *
 
 
 @fieldwise_init
-struct Array[space: MemorySpace = MemorySpace.CPU](Copyable, Movable, Stringable):
+struct Array(Copyable, Movable, Stringable):
     """Array is the lower level abstraction directly usable by the library consumer.
 
     Equivalent with https://github.com/apache/arrow/blob/7184439dea96cd285e6de00e07c5114e4919a465/cpp/src/arrow/array/data.h#L62-L84.
@@ -33,31 +33,31 @@ struct Array[space: MemorySpace = MemorySpace.CPU](Copyable, Movable, Stringable
 
     var dtype: DataType
     var length: Int
-    var bitmap: Bitmap[Self.space]
-    var buffers: List[Buffer[Self.space]]
-    var children: List[Array[Self.space]]
+    var bitmap: Bitmap
+    var buffers: List[Buffer]
+    var children: List[Array]
     var offset: Int
 
     @staticmethod
     fn from_buffer[dtype: DataType](
-        buffer: Buffer[MemorySpace.CPU], length: Int
-    ) -> Array[MemorySpace.CPU]:
+        buffer: Buffer, length: Int
+    ) -> Array:
         """Build an Array from a buffer where all the values are not null."""
         var bitmap = BitmapBuilder.alloc(length)
         bitmap.unsafe_range_set(0, length, True)
-        var buffers = List[Buffer[MemorySpace.CPU]]()
+        var buffers = List[Buffer]()
         buffers.append(buffer)
-        return Array[MemorySpace.CPU](
+        return Array(
             dtype=materialize[dtype](),
             length=length,
             bitmap=bitmap^.freeze(),
             buffers=buffers^,
-            children=List[Array[MemorySpace.CPU]](),
+            children=List[Array](),
             offset=0,
         )
 
     @implicit
-    fn __init__[T: DataType](out self, array: PrimitiveArray[T, Self.space]):
+    fn __init__[T: DataType](out self, array: PrimitiveArray[T]):
         self.dtype = materialize[T]()
         self.length = array.length
         self.offset = array.offset
@@ -66,7 +66,7 @@ struct Array[space: MemorySpace = MemorySpace.CPU](Copyable, Movable, Stringable
         self.children = []
 
     @implicit
-    fn __init__(out self, array: BoolArray[Self.space]):
+    fn __init__(out self, array: BoolArray):
         self.dtype = materialize[bool_]()
         self.length = array.length
         self.offset = array.offset
@@ -75,7 +75,7 @@ struct Array[space: MemorySpace = MemorySpace.CPU](Copyable, Movable, Stringable
         self.children = []
 
     @implicit
-    fn __init__(out self, array: StringArray[Self.space]):
+    fn __init__(out self, array: StringArray):
         self.dtype = materialize[string]()
         self.length = array.length
         self.offset = array.offset
@@ -84,7 +84,7 @@ struct Array[space: MemorySpace = MemorySpace.CPU](Copyable, Movable, Stringable
         self.children = []
 
     @implicit
-    fn __init__(out self, array: ListArray[Self.space]):
+    fn __init__(out self, array: ListArray):
         self.dtype = array.dtype.copy()
         self.length = array.length
         self.offset = array.offset
@@ -93,7 +93,7 @@ struct Array[space: MemorySpace = MemorySpace.CPU](Copyable, Movable, Stringable
         self.children = [array.values.copy()]
 
     @implicit
-    fn __init__(out self, array: FixedSizeListArray[Self.space]):
+    fn __init__(out self, array: FixedSizeListArray):
         self.dtype = array.dtype.copy()
         self.length = array.length
         self.offset = array.offset
@@ -102,7 +102,7 @@ struct Array[space: MemorySpace = MemorySpace.CPU](Copyable, Movable, Stringable
         self.children = [array.values.copy()]
 
     @implicit
-    fn __init__(out self, array: StructArray[Self.space]):
+    fn __init__(out self, array: StructArray):
         self.dtype = array.dtype.copy()
         self.length = array.length
         self.offset = 0
@@ -127,11 +127,9 @@ struct Array[space: MemorySpace = MemorySpace.CPU](Copyable, Movable, Stringable
         self.offset = take.offset
 
     fn is_valid(self, index: Int) -> Bool:
-        comptime assert Self.space != MemorySpace.DEVICE
         return self.bitmap.unsafe_get(index + self.offset)
 
     fn __str__(self) -> String:
-        comptime assert Self.space != MemorySpace.DEVICE
         from .pretty import ArrayPrinter
 
         var printer = ArrayPrinter()
@@ -141,66 +139,66 @@ struct Array[space: MemorySpace = MemorySpace.CPU](Copyable, Movable, Stringable
             pass
         return printer^.finish()
 
-    fn as_primitive[T: DataType](self) raises -> PrimitiveArray[T, Self.space]:
-        return PrimitiveArray[T, Self.space](self)
+    fn as_primitive[T: DataType](self) raises -> PrimitiveArray[T]:
+        return PrimitiveArray[T](self)
 
-    fn as_bool(self) raises -> BoolArray[Self.space]:
-        return BoolArray[Self.space](self)
+    fn as_bool(self) raises -> BoolArray:
+        return BoolArray(self)
 
-    fn as_int8(self) raises -> PrimitiveArray[int8, Self.space]:
-        return PrimitiveArray[int8, Self.space](self)
+    fn as_int8(self) raises -> PrimitiveArray[int8]:
+        return PrimitiveArray[int8](self)
 
-    fn as_int16(self) raises -> PrimitiveArray[int16, Self.space]:
-        return PrimitiveArray[int16, Self.space](self)
+    fn as_int16(self) raises -> PrimitiveArray[int16]:
+        return PrimitiveArray[int16](self)
 
-    fn as_int32(self) raises -> PrimitiveArray[int32, Self.space]:
-        return PrimitiveArray[int32, Self.space](self)
+    fn as_int32(self) raises -> PrimitiveArray[int32]:
+        return PrimitiveArray[int32](self)
 
-    fn as_int64(self) raises -> PrimitiveArray[int64, Self.space]:
-        return PrimitiveArray[int64, Self.space](self)
+    fn as_int64(self) raises -> PrimitiveArray[int64]:
+        return PrimitiveArray[int64](self)
 
-    fn as_uint8(self) raises -> PrimitiveArray[uint8, Self.space]:
-        return PrimitiveArray[uint8, Self.space](self)
+    fn as_uint8(self) raises -> PrimitiveArray[uint8]:
+        return PrimitiveArray[uint8](self)
 
-    fn as_uint16(self) raises -> PrimitiveArray[uint16, Self.space]:
-        return PrimitiveArray[uint16, Self.space](self)
+    fn as_uint16(self) raises -> PrimitiveArray[uint16]:
+        return PrimitiveArray[uint16](self)
 
-    fn as_uint32(self) raises -> PrimitiveArray[uint32, Self.space]:
-        return PrimitiveArray[uint32, Self.space](self)
+    fn as_uint32(self) raises -> PrimitiveArray[uint32]:
+        return PrimitiveArray[uint32](self)
 
-    fn as_uint64(self) raises -> PrimitiveArray[uint64, Self.space]:
-        return PrimitiveArray[uint64, Self.space](self)
+    fn as_uint64(self) raises -> PrimitiveArray[uint64]:
+        return PrimitiveArray[uint64](self)
 
-    fn as_float32(self) raises -> PrimitiveArray[float32, Self.space]:
-        return PrimitiveArray[float32, Self.space](self)
+    fn as_float32(self) raises -> PrimitiveArray[float32]:
+        return PrimitiveArray[float32](self)
 
-    fn as_float64(self) raises -> PrimitiveArray[float64, Self.space]:
-        return PrimitiveArray[float64, Self.space](self)
+    fn as_float64(self) raises -> PrimitiveArray[float64]:
+        return PrimitiveArray[float64](self)
 
-    fn as_string(self) raises -> StringArray[Self.space]:
-        return StringArray[Self.space](self)
+    fn as_string(self) raises -> StringArray:
+        return StringArray(self)
 
-    fn as_list(self) raises -> ListArray[Self.space]:
-        return ListArray[Self.space](self)
+    fn as_list(self) raises -> ListArray:
+        return ListArray(self)
 
-    fn as_fixed_size_list(self) raises -> FixedSizeListArray[Self.space]:
-        return FixedSizeListArray[Self.space](self)
+    fn as_fixed_size_list(self) raises -> FixedSizeListArray:
+        return FixedSizeListArray(self)
 
-    fn as_struct(self) raises -> StructArray[Self.space]:
-        return StructArray[Self.space](data=self)
+    fn as_struct(self) raises -> StructArray:
+        return StructArray(data=self)
 
 
 @fieldwise_init
-struct BoolArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
+struct BoolArray(Movable, Sized):
     """An immutable Arrow array of boolean values stored as a bit-packed buffer.
     """
 
     var length: Int
     var offset: Int
-    var bitmap: Bitmap[Self.space]
-    var values: Bitmap[Self.space]
+    var bitmap: Bitmap
+    var values: Bitmap
 
-    fn __init__(out self, ref data: Array[Self.space], offset: Int = 0) raises:
+    fn __init__(out self, ref data: Array, offset: Int = 0) raises:
         if data.dtype != materialize[bool_]():
             raise Error(
                 "Unexpected dtype '"
@@ -243,7 +241,7 @@ struct BoolArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
 
 
 @fieldwise_init
-struct PrimitiveArray[T: DataType, space: MemorySpace = MemorySpace.CPU](
+struct PrimitiveArray[T: DataType](
     Movable, Sized
 ):
     """An immutable Arrow array of fixed-size primitive values (integers, floats, etc.).
@@ -254,10 +252,10 @@ struct PrimitiveArray[T: DataType, space: MemorySpace = MemorySpace.CPU](
 
     var length: Int
     var offset: Int
-    var bitmap: Bitmap[Self.space]
-    var buffer: Buffer[Self.space]
+    var bitmap: Bitmap
+    var buffer: Buffer
 
-    fn __init__(out self, ref data: Array[Self.space], offset: Int = 0) raises:
+    fn __init__(out self, ref data: Array, offset: Int = 0) raises:
         if data.dtype != materialize[Self.T]():
             raise Error(
                 "Unexpected dtype '"
@@ -284,7 +282,6 @@ struct PrimitiveArray[T: DataType, space: MemorySpace = MemorySpace.CPU](
 
     @always_inline
     fn unsafe_get(self, index: Int) -> Self.scalar:
-        comptime assert Self.space != MemorySpace.DEVICE, "cannot read device array, call to_host() first"
         return self.buffer.unsafe_get[Self.T.native](index + self.offset)
 
     fn __getitem__(self, index: Int) raises -> Self.scalar:
@@ -299,28 +296,21 @@ struct PrimitiveArray[T: DataType, space: MemorySpace = MemorySpace.CPU](
 
     fn null_count(self) -> Int:
         """Returns the number of null values in the array."""
-        comptime assert Self.space != MemorySpace.DEVICE
         var valid_count = self.bitmap.bit_count()
         return self.length - valid_count
 
-    fn to_device(
-        self, ctx: DeviceContext
-    ) raises -> PrimitiveArray[Self.T, MemorySpace.DEVICE]:
+    fn to_device(self, ctx: DeviceContext) raises -> PrimitiveArray[Self.T]:
         """Upload array data to the GPU."""
-        comptime assert Self.space == MemorySpace.CPU
-        return PrimitiveArray[Self.T, MemorySpace.DEVICE](
+        return PrimitiveArray[Self.T](
             length=self.length,
             offset=0,
             bitmap=self.bitmap.to_device(ctx),
             buffer=self.buffer.to_device(ctx),
         )
 
-    fn to_host(
-        self, ctx: DeviceContext
-    ) raises -> PrimitiveArray[Self.T, MemorySpace.CPU]:
+    fn to_host(self, ctx: DeviceContext) raises -> PrimitiveArray[Self.T]:
         """Download array data from the GPU."""
-        comptime assert Self.space == MemorySpace.DEVICE
-        return PrimitiveArray[Self.T, MemorySpace.CPU](
+        return PrimitiveArray[Self.T](
             length=self.length,
             offset=0,
             bitmap=self.bitmap.to_host(ctx),
@@ -341,16 +331,16 @@ comptime Float64Array = PrimitiveArray[float64]
 
 
 @fieldwise_init
-struct StringArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
+struct StringArray(Movable, Sized):
     """An immutable Arrow array of variable-length UTF-8 strings."""
 
     var length: Int
     var offset: Int
-    var bitmap: Bitmap[Self.space]
-    var offsets: Buffer[Self.space]
-    var values: Buffer[Self.space]
+    var bitmap: Bitmap
+    var offsets: Buffer
+    var values: Buffer
 
-    fn __init__(out self, ref data: Array[Self.space]) raises:
+    fn __init__(out self, ref data: Array) raises:
         """Construct a StringArray from a generic Array.
 
         Raises:
@@ -414,18 +404,18 @@ struct StringArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
 
 
 @fieldwise_init
-struct ListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
+struct ListArray(Movable, Sized):
     """An immutable Arrow array of variable-length lists (each element is a sub-array).
     """
 
     var dtype: DataType
     var length: Int
     var offset: Int
-    var bitmap: Bitmap[Self.space]
-    var offsets: Buffer[Self.space]
-    var values: Array[Self.space]
+    var bitmap: Bitmap
+    var offsets: Buffer
+    var values: Array
 
-    fn __init__(out self, ref data: Array[Self.space]) raises:
+    fn __init__(out self, ref data: Array) raises:
         if not data.dtype.is_list():
             raise Error(
                 "Unexpected dtype " + String(data.dtype) + " instead of 'list'"
@@ -448,7 +438,7 @@ struct ListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
     fn is_valid(self, index: Int) -> Bool:
         return self.bitmap.unsafe_get(index)
 
-    fn unsafe_get(self, index: Int, out array_data: Array[Self.space]) raises:
+    fn unsafe_get(self, index: Int, out array_data: Array) raises:
         """Access the value at a given index in the list array.
 
         Use an out argument to allow the caller to re-use memory while iterating over a pyarrow structure.
@@ -459,7 +449,7 @@ struct ListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
         var end = Int(
             self.offsets.unsafe_get[DType.int32](self.offset + index + 1)
         )
-        return Array[Self.space](
+        return Array(
             dtype=self.values.dtype.copy(),
             bitmap=self.values.bitmap,
             buffers=self.values.buffers.copy(),
@@ -470,17 +460,17 @@ struct ListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
 
 
 @fieldwise_init
-struct FixedSizeListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
+struct FixedSizeListArray(Movable, Sized):
     """An immutable Arrow array of fixed-size lists (each element is a sub-array of the same length).
     """
 
     var dtype: DataType
     var length: Int
     var offset: Int
-    var bitmap: Bitmap[Self.space]
-    var values: Array[Self.space]
+    var bitmap: Bitmap
+    var values: Array
 
-    fn __init__(out self, ref data: Array[Self.space]) raises:
+    fn __init__(out self, ref data: Array) raises:
         if not data.dtype.is_fixed_size_list():
             raise Error(
                 "Unexpected dtype "
@@ -504,10 +494,10 @@ struct FixedSizeListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
     fn is_valid(self, index: Int) -> Bool:
         return self.bitmap.unsafe_get(index)
 
-    fn unsafe_get(self, index: Int, out array_data: Array[Self.space]) raises:
+    fn unsafe_get(self, index: Int, out array_data: Array) raises:
         var list_size = self.dtype.size
         var start = (self.offset + index) * list_size
-        return Array[Self.space](
+        return Array(
             dtype=self.values.dtype.copy(),
             bitmap=self.values.bitmap,
             buffers=self.values.buffers.copy(),
@@ -516,23 +506,20 @@ struct FixedSizeListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
             children=self.values.children.copy(),
         )
 
-    fn to_device(
-        self, ctx: DeviceContext
-    ) raises -> FixedSizeListArray[MemorySpace.DEVICE]:
+    fn to_device(self, ctx: DeviceContext) raises -> FixedSizeListArray:
         """Upload child values to the GPU."""
-        comptime assert Self.space == MemorySpace.CPU
-        var new_buffers = List[Buffer[MemorySpace.DEVICE]]()
+        var new_buffers = List[Buffer]()
         for i in range(len(self.values.buffers)):
             new_buffers.append(self.values.buffers[i].to_device(ctx))
-        var new_child = Array[MemorySpace.DEVICE](
+        var new_child = Array(
             dtype=self.values.dtype.copy(),
             bitmap=self.values.bitmap.to_device(ctx),
             buffers=new_buffers^,
             offset=self.values.offset,
             length=self.values.length,
-            children=List[Array[MemorySpace.DEVICE]](),
+            children=List[Array](),
         )
-        return FixedSizeListArray[MemorySpace.DEVICE](
+        return FixedSizeListArray(
             dtype=self.dtype.copy(),
             length=self.length,
             offset=self.offset,
@@ -542,16 +529,16 @@ struct FixedSizeListArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
 
 
 @fieldwise_init
-struct StructArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
+struct StructArray(Movable, Sized):
     """An immutable Arrow array of structs (each element is a collection of named fields).
     """
 
     var dtype: DataType
     var length: Int
-    var bitmap: Bitmap[Self.space]
-    var children: List[Array[Self.space]]
+    var bitmap: Bitmap
+    var children: List[Array]
 
-    fn __init__(out self, *, ref data: Array[Self.space]):
+    fn __init__(out self, *, ref data: Array):
         self.dtype = data.dtype.copy()
         self.length = data.length
         self.bitmap = data.bitmap
@@ -569,12 +556,12 @@ struct StructArray[space: MemorySpace = MemorySpace.CPU](Movable, Sized):
 
     fn unsafe_get(
         self, name: StringSlice
-    ) raises -> ref[self.children[0]] Array[Self.space]:
+    ) raises -> ref[self.children[0]] Array:
         """Access the field with the given name in the struct."""
         return self.children[self._index_for_field_name(name)]
 
 
-struct ChunkedArray[space: MemorySpace = MemorySpace.CPU](Stringable):
+struct ChunkedArray(Stringable):
     """An array-like composed from a (possibly empty) collection of pyarrow.Arrays.
 
     [Reference](https://arrow.apache.org/docs/python/generated/pyarrow.ChunkedArray.html#pyarrow-chunkedarray).
@@ -582,7 +569,7 @@ struct ChunkedArray[space: MemorySpace = MemorySpace.CPU](Stringable):
 
     var dtype: DataType
     var length: Int
-    var chunks: List[Array[Self.space]]
+    var chunks: List[Array]
 
     fn _compute_length(mut self) -> None:
         """Update the length of the array from the length of its chunks."""
@@ -591,7 +578,7 @@ struct ChunkedArray[space: MemorySpace = MemorySpace.CPU](Stringable):
             total_length += chunk.length
         self.length = total_length
 
-    fn __init__(out self, var dtype: DataType, var chunks: List[Array[Self.space]]):
+    fn __init__(out self, var dtype: DataType, var chunks: List[Array]):
         self.dtype = dtype^
         self.chunks = chunks^
         self.length = 0
@@ -607,7 +594,7 @@ struct ChunkedArray[space: MemorySpace = MemorySpace.CPU](Stringable):
             pass
         return printer^.finish()
 
-    fn chunk(self, index: Int) -> ref[self.chunks] Array[Self.space]:
+    fn chunk(self, index: Int) -> ref[self.chunks] Array:
         """Returns the chunk at the given index.
 
         Args:
@@ -618,30 +605,25 @@ struct ChunkedArray[space: MemorySpace = MemorySpace.CPU](Stringable):
         """
         return self.chunks[index]
 
-    fn combine_chunks(var self, out combined: Array[Self.space]):
+    fn combine_chunks(var self, out combined: Array):
         """Combines all chunks into a single array."""
-        comptime assert Self.space == MemorySpace.CPU, "combine_chunks requires CPU arrays"
         var bitmap = BitmapBuilder.alloc(self.length)
-        var buffers = List[Buffer[Self.space]]()
-        var children = List[Array[Self.space]]()
+        var buffers = List[Buffer]()
+        var children = List[Array]()
         var start = 0
         while self.chunks:
             var chunk = self.chunks.pop(0)
             var chunk_length = chunk.length
-            bitmap.extend(
-                rebind[Bitmap[MemorySpace.CPU]](chunk.bitmap),
-                start,
-                chunk_length,
-            )
+            bitmap.extend(chunk.bitmap, start, chunk_length)
             for i in range(len(chunk.buffers)):
                 buffers.append(chunk.buffers[i])
             for i in range(len(chunk.children)):
                 children.append(chunk.children[i].copy())
             start += chunk_length
-        combined = Array[Self.space](
+        combined = Array(
             dtype=self.dtype.copy(),
             length=self.length,
-            bitmap=rebind[Bitmap[Self.space]](bitmap^.freeze()),
+            bitmap=bitmap^.freeze(),
             buffers=buffers^,
             children=children^,
             offset=0,

@@ -39,11 +39,11 @@ from gpu.host import DeviceBuffer, DeviceContext
 
 
 @fieldwise_init
-struct MemorySpace(Equatable, Stringable, Writable):
-    """Identifies where a buffer's memory resides.
+struct MemorySpace(ImplicitlyCopyable, Movable, Equatable, Stringable, Writable):
+    """Identifies where a buffer's memory resides at runtime.
 
-    Used as a compile-time parameter on Buffer, Bitmap, and typed arrays
-    to prevent accidental CPU reads of device-only memory.
+    Stored as a field on Buffer to enable device-aware dispatch without
+    requiring type parameters on every array type.
     """
 
     var _value: UInt8
@@ -243,14 +243,14 @@ struct BufferBuilder(Movable):
 # ---------------------------------------------------------------------------
 
 
-struct Buffer[space: MemorySpace = MemorySpace.CPU](ImplicitlyCopyable, Movable):
+struct Buffer(ImplicitlyCopyable, Movable):
     """Immutable contiguous memory region with 64-byte alignment.
 
-    The `space` parameter identifies where the buffer's memory lives:
+    The `space` field identifies where the buffer's memory lives at runtime:
     - `MemorySpace.CPU` (default): heap-allocated, CPU-accessible
     - `MemorySpace.DEVICE`: GPU device memory, not CPU-accessible
 
-    Calling `unsafe_get` on a `Buffer[MemorySpace.DEVICE]` is a compile error.
+    Calling `unsafe_get` on a device buffer raises a runtime error.
     Use `to_host()` to download device data before reading.
 
     Buffers are Copyable with O(1) shared semantics: copying bumps the
@@ -259,6 +259,7 @@ struct Buffer[space: MemorySpace = MemorySpace.CPU](ImplicitlyCopyable, Movable)
 
     var ptr: UnsafePointer[UInt8, ImmutExternalOrigin]
     var size: Int
+    var space: MemorySpace
     var dealloc: Optional[ArcPointer[Allocation]]
     var _device: Optional[DeviceBuffer[DType.uint8]]
 
@@ -269,20 +270,23 @@ struct Buffer[space: MemorySpace = MemorySpace.CPU](ImplicitlyCopyable, Movable)
     ):
         self.ptr = ptr
         self.size = size
+        self.space = MemorySpace.CPU
         self.dealloc = None
         self._device = None
 
     fn __init__(out self, *, copy: Self):
         self.ptr = copy.ptr
         self.size = copy.size
+        self.space = copy.space
         self.dealloc = copy.dealloc
         self._device = copy._device
 
     @implicit
-    fn __init__(out self, var bitmap: Bitmap[Self.space]):
+    fn __init__(out self, var bitmap: Bitmap):
         """Implicitly convert an immutable Bitmap to its underlying Buffer."""
         self.ptr = bitmap.buffer.ptr
         self.size = bitmap.buffer.size
+        self.space = bitmap.buffer.space
         self.dealloc = None
         self._device = bitmap.buffer._device
         swap(self.dealloc, bitmap.buffer.dealloc)
@@ -295,7 +299,7 @@ struct Buffer[space: MemorySpace = MemorySpace.CPU](ImplicitlyCopyable, Movable)
         length: I,
         dtype: DType,
         owner: ArcPointer[Allocation],
-    ) -> Buffer[MemorySpace.CPU]:
+    ) -> Buffer:
         """Create an immutable view into foreign memory.
 
         The caller passes an ArcPointer[Allocation] that keeps the
@@ -303,7 +307,7 @@ struct Buffer[space: MemorySpace = MemorySpace.CPU](ImplicitlyCopyable, Movable)
         from it exists.  When the last such buffer is dropped the owner's
         release callback fires automatically.
         """
-        var result = Buffer[MemorySpace.CPU](
+        var result = Buffer(
             rebind[UnsafePointer[UInt8, ImmutExternalOrigin]](
                 ptr.bitcast[UInt8]()
             ),
@@ -315,15 +319,16 @@ struct Buffer[space: MemorySpace = MemorySpace.CPU](ImplicitlyCopyable, Movable)
     @staticmethod
     fn device_only(
         dev: DeviceBuffer[DType.uint8], size: Int
-    ) -> Buffer[MemorySpace.DEVICE]:
+    ) -> Buffer:
         """Create a device-only buffer from a GPU DeviceBuffer handle.
 
         The resulting buffer is not CPU-accessible. Call `to_host()` to
         download to CPU memory.
         """
-        var result = Buffer[MemorySpace.DEVICE](
+        var result = Buffer(
             UnsafePointer[UInt8, ImmutExternalOrigin](), size
         )
+        result.space = MemorySpace.DEVICE
         result._device = dev
         return result^
 
@@ -333,12 +338,12 @@ struct Buffer[space: MemorySpace = MemorySpace.CPU](ImplicitlyCopyable, Movable)
     @always_inline
     fn is_cpu(self) -> Bool:
         """Return True if the buffer is CPU-accessible."""
-        return comptime(Self.space != MemorySpace.DEVICE)
+        return self.space != MemorySpace.DEVICE
 
     @always_inline
     fn is_device(self) -> Bool:
         """Return True if the buffer lives on a GPU device."""
-        return comptime(Self.space == MemorySpace.DEVICE)
+        return self.space == MemorySpace.DEVICE
 
     @always_inline
     fn has_device(self) -> Bool:
@@ -347,19 +352,21 @@ struct Buffer[space: MemorySpace = MemorySpace.CPU](ImplicitlyCopyable, Movable)
 
     fn device_buffer(self) -> DeviceBuffer[DType.uint8]:
         """Return the DeviceBuffer handle. Only valid on device buffers."""
-        comptime assert Self.space == MemorySpace.DEVICE, "not a device buffer"
+        debug_assert(self.space == MemorySpace.DEVICE, "not a device buffer")
         return self._device.value()
 
-    fn to_device(self, ctx: DeviceContext) raises -> Buffer[MemorySpace.DEVICE]:
+    fn to_device(self, ctx: DeviceContext) raises -> Buffer:
         """Upload buffer data to the GPU, returning a new device-only Buffer."""
-        comptime assert Self.space == MemorySpace.CPU, "already on device"
+        if self.space == MemorySpace.DEVICE:
+            raise Error("to_device: buffer is already on device")
         var dev = ctx.enqueue_create_buffer[DType.uint8](self.size)
         ctx.enqueue_copy(dev, self.ptr)
-        return Buffer[MemorySpace.DEVICE].device_only(dev, self.size)
+        return Buffer.device_only(dev, self.size)
 
-    fn to_host(self, ctx: DeviceContext) raises -> Buffer[MemorySpace.CPU]:
+    fn to_host(self, ctx: DeviceContext) raises -> Buffer:
         """Download buffer data from the GPU, returning a new CPU Buffer."""
-        comptime assert Self.space == MemorySpace.DEVICE, "already on host"
+        if self.space != MemorySpace.DEVICE:
+            raise Error("to_host: buffer is not on device")
         var builder = BufferBuilder.alloc(self.size)
         ctx.enqueue_copy(builder.ptr, self._device.value())
         ctx.synchronize()
@@ -372,19 +379,19 @@ struct Buffer[space: MemorySpace = MemorySpace.CPU](ImplicitlyCopyable, Movable)
     @always_inline
     fn unsafe_ptr[T: DType = DType.uint8](self, offset: Int = 0) -> UnsafePointer[Scalar[T], ImmutExternalOrigin]:
         """Return a typed pointer to the element at offset."""
-        comptime assert Self.space != MemorySpace.DEVICE, "cannot read device buffer, call to_host() first"
+        debug_assert(self.space != MemorySpace.DEVICE, "cannot read device buffer, call to_host() first")
         return self.ptr.bitcast[Scalar[T]]() + offset
 
     @always_inline
     fn unsafe_get[T: DType = DType.uint8](self, index: Int) -> Scalar[T]:
-        comptime assert Self.space != MemorySpace.DEVICE, "cannot read device buffer, call to_host() first"
+        debug_assert(self.space != MemorySpace.DEVICE, "cannot read device buffer, call to_host() first")
         comptime output = Scalar[T]
         return self.ptr.bitcast[output]()[index]
 
     @always_inline
     fn simd_load[T: DType, W: Int](self, index: Int) -> SIMD[T, W]:
         """Load W elements of type T at element index `index`."""
-        comptime assert Self.space != MemorySpace.DEVICE, "cannot read device buffer, call to_host() first"
+        debug_assert(self.space != MemorySpace.DEVICE, "cannot read device buffer, call to_host() first")
         return (self.ptr.bitcast[Scalar[T]]() + index).load[width=W]()
 
 
@@ -636,7 +643,7 @@ struct BitmapBuilder(Movable, Stringable):
 # ---------------------------------------------------------------------------
 
 
-struct Bitmap[space: MemorySpace = MemorySpace.CPU](
+struct Bitmap(
     ImplicitlyCopyable, Movable, Stringable
 ):
     """Immutable bit-packed validity bitmap backed by a Buffer.
@@ -646,7 +653,7 @@ struct Bitmap[space: MemorySpace = MemorySpace.CPU](
     Copyable with O(1) shared semantics (delegates to Buffer's copy).
     """
 
-    var buffer: Buffer[Self.space]
+    var buffer: Buffer
 
     @staticmethod
     fn foreign_view[
@@ -655,20 +662,20 @@ struct Bitmap[space: MemorySpace = MemorySpace.CPU](
         ptr: UnsafePointer[NoneType, MutAnyOrigin],
         length: I,
         owner: ArcPointer[Allocation],
-    ) -> Bitmap[MemorySpace.CPU]:
+    ) -> Bitmap:
         """Create an immutable view into foreign memory."""
         var byte_length = math.ceildiv(Int(length), 8)
         var buffer = Buffer.foreign_view(ptr, byte_length, DType.uint8, owner)
-        return Bitmap[MemorySpace.CPU](buffer^)
+        return Bitmap(buffer^)
 
-    fn __init__(out self, var buffer: Buffer[Self.space]):
+    fn __init__(out self, var buffer: Buffer):
         self.buffer = buffer^
 
     fn __init__(out self, *, copy: Self):
-        self.buffer = Buffer[Self.space](copy=copy.buffer)
+        self.buffer = Buffer(copy=copy.buffer)
 
     fn __str__(self) -> String:
-        comptime assert Self.space != MemorySpace.DEVICE, "cannot stringify device bitmap"
+        debug_assert(self.buffer.space != MemorySpace.DEVICE, "cannot stringify device bitmap")
         var output = String()
         for i in range(self.length()):
             var value = self.unsafe_get(i)
@@ -688,18 +695,18 @@ struct Bitmap[space: MemorySpace = MemorySpace.CPU](
         Requires offset to be byte-aligned (offset % 8 == 0).
         Use this for SIMD bitmap operations.
         """
-        comptime assert Self.space != MemorySpace.DEVICE, "cannot read device bitmap, call to_host() first"
+        debug_assert(self.buffer.space != MemorySpace.DEVICE, "cannot read device bitmap, call to_host() first")
         debug_assert(offset % 8 == 0, "bitmap offset is not byte-aligned")
         return self.buffer.ptr + (offset // 8)
 
     fn unsafe_get(self, index: Int) -> Bool:
-        comptime assert Self.space != MemorySpace.DEVICE, "cannot read device bitmap, call to_host() first"
+        debug_assert(self.buffer.space != MemorySpace.DEVICE, "cannot read device bitmap, call to_host() first")
         return Bool((self.buffer.ptr[index // 8] >> UInt8(index % 8)) & 1)
 
     @always_inline
     fn simd_load[W: Int](self, byte_offset: Int) -> SIMD[DType.uint8, W]:
         """Load W bytes from the bitmap at byte offset `byte_offset`."""
-        comptime assert Self.space != MemorySpace.DEVICE, "cannot read device bitmap, call to_host() first"
+        debug_assert(self.buffer.space != MemorySpace.DEVICE, "cannot read device bitmap, call to_host() first")
         return (self.buffer.ptr + byte_offset).load[width=W]()
 
     @always_inline
@@ -714,15 +721,13 @@ struct Bitmap[space: MemorySpace = MemorySpace.CPU](
         """Return True if the bitmap lives on a GPU device."""
         return self.buffer.has_device()
 
-    fn to_device(self, ctx: DeviceContext) raises -> Bitmap[MemorySpace.DEVICE]:
+    fn to_device(self, ctx: DeviceContext) raises -> Bitmap:
         """Upload bitmap data to the GPU."""
-        comptime assert Self.space == MemorySpace.CPU
-        return Bitmap[MemorySpace.DEVICE](self.buffer.to_device(ctx))
+        return Bitmap(self.buffer.to_device(ctx))
 
-    fn to_host(self, ctx: DeviceContext) raises -> Bitmap[MemorySpace.CPU]:
+    fn to_host(self, ctx: DeviceContext) raises -> Bitmap:
         """Download bitmap data from the GPU."""
-        comptime assert Self.space == MemorySpace.DEVICE
-        return Bitmap[MemorySpace.CPU](self.buffer.to_host(ctx))
+        return Bitmap(self.buffer.to_host(ctx))
 
     fn device_buffer(self) -> DeviceBuffer[DType.uint8]:
         """Return the underlying DeviceBuffer handle."""
@@ -730,7 +735,7 @@ struct Bitmap[space: MemorySpace = MemorySpace.CPU](
 
     fn bit_count(self) -> Int:
         """The number of bits with value 1 in the Bitmap."""
-        comptime assert Self.space != MemorySpace.DEVICE, "cannot count bits on device bitmap"
+        debug_assert(self.buffer.space != MemorySpace.DEVICE, "cannot count bits on device bitmap")
         var start = 0
         var count = 0
         while start < self.buffer.size:
@@ -750,7 +755,7 @@ struct Bitmap[space: MemorySpace = MemorySpace.CPU](
 
     fn count_leading_bits(self, start: Int = 0, value: Bool = False) -> Int:
         """Count the number of leading bits with the given value in the bitmap."""
-        comptime assert Self.space != MemorySpace.DEVICE, "cannot count bits on device bitmap"
+        debug_assert(self.buffer.space != MemorySpace.DEVICE, "cannot count bits on device bitmap")
 
         var count = 0
         var index = start // 8

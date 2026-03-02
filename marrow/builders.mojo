@@ -285,7 +285,7 @@ struct ListBuilder(Movable, Sized):
     var capacity: Int
     var bitmap: BitmapBuilder
     var offsets: BufferBuilder
-    var values: Array[MemorySpace.CPU]
+    var values: Array
 
     fn __init__(
         out self,
@@ -295,7 +295,7 @@ struct ListBuilder(Movable, Sized):
         capacity: Int,
         var bitmap: BitmapBuilder,
         var offsets: BufferBuilder,
-        var values: Array[MemorySpace.CPU],
+        var values: Array,
     ):
         """Builder constructor for creating a mutable ListBuilder."""
         self.dtype = dtype^
@@ -308,7 +308,7 @@ struct ListBuilder(Movable, Sized):
 
     @staticmethod
     fn from_values(
-        var values: Array[MemorySpace.CPU], capacity: Int = 1
+        var values: Array, capacity: Int = 1
     ) raises -> ListBuilder:
         """Create a ListBuilder wrapping the given values.
 
@@ -376,7 +376,7 @@ struct FixedSizeListBuilder(Movable, Sized):
     var offset: Int
     var capacity: Int
     var bitmap: BitmapBuilder
-    var values: Array[MemorySpace.CPU]
+    var values: Array
 
     fn __init__(
         out self,
@@ -385,7 +385,7 @@ struct FixedSizeListBuilder(Movable, Sized):
         offset: Int,
         capacity: Int,
         var bitmap: BitmapBuilder,
-        var values: Array[MemorySpace.CPU],
+        var values: Array,
     ):
         self.dtype = dtype^
         self.length = length
@@ -396,7 +396,7 @@ struct FixedSizeListBuilder(Movable, Sized):
 
     @staticmethod
     fn from_values(
-        var values: Array[MemorySpace.CPU], list_size: Int, capacity: Int = 1
+        var values: Array, list_size: Int, capacity: Int = 1
     ) raises -> FixedSizeListBuilder:
         """Create a FixedSizeListBuilder wrapping the given values.
 
@@ -459,7 +459,7 @@ struct StructBuilder(Movable, Sized):
     var length: Int
     var capacity: Int
     var bitmap: BitmapBuilder
-    var children: List[Array[MemorySpace.CPU]]
+    var children: List[Array]
 
     fn __init__(
         out self,

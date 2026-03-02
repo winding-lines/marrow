@@ -1,7 +1,6 @@
 from testing import assert_equal, TestSuite
 
 from marrow.arrays import *
-from marrow.buffers import MemorySpace
 from marrow.dtypes import *
 from marrow.visitor import ArrayVisitor
 
@@ -14,23 +13,23 @@ struct ElementCounter(ArrayVisitor):
     fn __init__(out self):
         self.count = 0
 
-    fn visit[T: DataType, space: MemorySpace = MemorySpace.CPU](
-        mut self, array: PrimitiveArray[T, space]
+    fn visit[T: DataType](
+        mut self, array: PrimitiveArray[T]
     ) raises:
         self.count += array.null_count() * -1 + array.length
 
-    fn visit[space: MemorySpace = MemorySpace.CPU](
-        mut self, array: StringArray[space]
+    fn visit(
+        mut self, array: StringArray
     ) raises:
         self.count += array.length
 
-    fn visit[space: MemorySpace = MemorySpace.CPU](
-        mut self, array: ListArray[space]
+    fn visit(
+        mut self, array: ListArray
     ) raises:
         self.count += array.length
 
-    fn visit[space: MemorySpace = MemorySpace.CPU](
-        mut self, array: StructArray[space]
+    fn visit(
+        mut self, array: StructArray
     ) raises:
         self.count += array.length
 

@@ -16,7 +16,7 @@ Available reductions and their SIMD horizontal method:
 import math
 
 from marrow.arrays import PrimitiveArray, Array
-from marrow.buffers import MemorySpace
+
 from marrow.dtypes import DataType, all_numeric_dtypes, materialize, bool as bool_dt
 from . import reduce_simd
 
@@ -83,7 +83,7 @@ fn sum[T: DataType](array: PrimitiveArray[T]) -> Scalar[T.native]:
     )
 
 
-fn sum(array: Array[MemorySpace.CPU]) raises -> Scalar[DType.float64]:
+fn sum(array: Array) raises -> Scalar[DType.float64]:
     """Runtime-typed sum, returns float64."""
     comptime for dtype in all_numeric_dtypes:
         if array.dtype == materialize[dtype]():
@@ -103,7 +103,7 @@ fn product[T: DataType](array: PrimitiveArray[T]) -> Scalar[T.native]:
     )
 
 
-fn product(array: Array[MemorySpace.CPU]) raises -> Scalar[DType.float64]:
+fn product(array: Array) raises -> Scalar[DType.float64]:
     """Runtime-typed product, returns float64."""
     comptime for dtype in all_numeric_dtypes:
         if array.dtype == materialize[dtype]():
@@ -126,7 +126,7 @@ fn min_[T: DataType](array: PrimitiveArray[T]) -> Scalar[T.native]:
     )
 
 
-fn min_(array: Array[MemorySpace.CPU]) raises -> Scalar[DType.float64]:
+fn min_(array: Array) raises -> Scalar[DType.float64]:
     """Runtime-typed min, returns float64."""
     comptime for dtype in all_numeric_dtypes:
         if array.dtype == materialize[dtype]():
@@ -149,7 +149,7 @@ fn max_[T: DataType](array: PrimitiveArray[T]) -> Scalar[T.native]:
     )
 
 
-fn max_(array: Array[MemorySpace.CPU]) raises -> Scalar[DType.float64]:
+fn max_(array: Array) raises -> Scalar[DType.float64]:
     """Runtime-typed max, returns float64."""
     comptime for dtype in all_numeric_dtypes:
         if array.dtype == materialize[dtype]():
