@@ -40,6 +40,7 @@ struct Array(Copyable, Movable, Stringable):
 
     var dtype: DataType
     var length: Int
+    var nulls: Int
     var bitmap: Buffer
     var buffers: List[Buffer]
     var children: List[Array]
@@ -49,6 +50,7 @@ struct Array(Copyable, Movable, Stringable):
     fn __init__[T: DataType](out self, array: PrimitiveArray[T]):
         self.dtype = materialize[T]()
         self.length = array.length
+        self.nulls = array.nulls
         self.offset = array.offset
         self.bitmap = array.bitmap
         self.buffers = [array.buffer]
@@ -58,6 +60,7 @@ struct Array(Copyable, Movable, Stringable):
     fn __init__(out self, array: BoolArray):
         self.dtype = materialize[bool_]()
         self.length = array.length
+        self.nulls = array.nulls
         self.offset = array.offset
         self.bitmap = array.bitmap
         self.buffers = [array.values]
@@ -67,6 +70,7 @@ struct Array(Copyable, Movable, Stringable):
     fn __init__(out self, array: StringArray):
         self.dtype = materialize[string]()
         self.length = array.length
+        self.nulls = array.nulls
         self.offset = array.offset
         self.bitmap = array.bitmap
         self.buffers = [array.offsets, array.values]
@@ -76,6 +80,7 @@ struct Array(Copyable, Movable, Stringable):
     fn __init__(out self, array: ListArray):
         self.dtype = array.dtype.copy()
         self.length = array.length
+        self.nulls = array.nulls
         self.offset = array.offset
         self.bitmap = array.bitmap
         self.buffers = [array.offsets]
@@ -85,6 +90,7 @@ struct Array(Copyable, Movable, Stringable):
     fn __init__(out self, array: FixedSizeListArray):
         self.dtype = array.dtype.copy()
         self.length = array.length
+        self.nulls = array.nulls
         self.offset = array.offset
         self.bitmap = array.bitmap
         self.buffers = []
@@ -94,6 +100,7 @@ struct Array(Copyable, Movable, Stringable):
     fn __init__(out self, array: StructArray):
         self.dtype = array.dtype.copy()
         self.length = array.length
+        self.nulls = array.nulls
         self.offset = 0
         self.bitmap = array.bitmap
         self.buffers = []
@@ -102,6 +109,7 @@ struct Array(Copyable, Movable, Stringable):
     fn __init__(out self, *, copy: Self):
         self.dtype = copy.dtype.copy()
         self.length = copy.length
+        self.nulls = copy.nulls
         self.bitmap = copy.bitmap
         self.buffers = copy.buffers.copy()
         self.children = copy.children.copy()
@@ -110,6 +118,7 @@ struct Array(Copyable, Movable, Stringable):
     fn __init__(out self, *, deinit take: Self):
         self.dtype = take.dtype^
         self.length = take.length
+        self.nulls = take.nulls
         self.bitmap = take.bitmap^
         self.buffers = take.buffers^
         self.children = take.children^
@@ -183,6 +192,7 @@ struct BoolArray(Movable, Sized):
     """
 
     var length: Int
+    var nulls: Int
     var offset: Int
     var bitmap: Buffer
     var values: Buffer
@@ -196,8 +206,9 @@ struct BoolArray(Movable, Sized):
             )
         elif len(data.buffers) != 1:
             raise Error("BoolArray requires exactly one buffer")
-        self.offset = data.offset + offset
         self.length = data.length
+        self.nulls = data.nulls
+        self.offset = data.offset + offset
         self.bitmap = data.bitmap
         self.values = data.buffers[0]
 
@@ -224,11 +235,7 @@ struct BoolArray(Movable, Sized):
         return self.unsafe_get(index)
 
     fn null_count(self) -> Int:
-        """Returns the number of null values in the array."""
-        var valid_count = bitmap_count_ones(
-            self.bitmap.unsafe_ptr(), self.bitmap.size
-        )
-        return self.length - valid_count
+        return self.nulls
 
 
 @fieldwise_init
@@ -240,6 +247,7 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
     comptime scalar = Scalar[Self.T.native]
 
     var length: Int
+    var nulls: Int
     var offset: Int
     var bitmap: Buffer
     var buffer: Buffer
@@ -256,8 +264,9 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
         elif len(data.buffers) != 1:
             raise Error("PrimitiveArray requires exactly one buffer")
 
-        self.offset = data.offset + offset
         self.length = data.length
+        self.nulls = data.nulls
+        self.offset = data.offset + offset
         self.bitmap = data.bitmap
         self.buffer = data.buffers[0]
 
@@ -284,16 +293,13 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
         return self.unsafe_get(index)
 
     fn null_count(self) -> Int:
-        """Returns the number of null values in the array."""
-        var valid_count = bitmap_count_ones(
-            self.bitmap.unsafe_ptr(), self.bitmap.size
-        )
-        return self.length - valid_count
+        return self.nulls
 
     fn to_device(self, ctx: DeviceContext) raises -> PrimitiveArray[Self.T]:
         """Upload array data to the GPU."""
         return PrimitiveArray[Self.T](
             length=self.length,
+            nulls=self.nulls,
             offset=0,
             bitmap=self.bitmap.to_device(ctx),
             buffer=self.buffer.to_device(ctx),
@@ -303,6 +309,7 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
         """Download array data from the GPU."""
         return PrimitiveArray[Self.T](
             length=self.length,
+            nulls=self.nulls,
             offset=0,
             bitmap=self.bitmap.to_host(ctx),
             buffer=self.buffer.to_host(ctx),
@@ -326,6 +333,7 @@ struct StringArray(Movable, Sized):
     """An immutable Arrow array of variable-length UTF-8 strings."""
 
     var length: Int
+    var nulls: Int
     var offset: Int
     var bitmap: Buffer
     var offsets: Buffer
@@ -347,6 +355,7 @@ struct StringArray(Movable, Sized):
             raise Error("StringArray requires exactly two buffers")
 
         self.length = data.length
+        self.nulls = data.nulls
         self.offset = data.offset
         self.bitmap = data.bitmap
         self.offsets = data.buffers[0]
@@ -401,6 +410,7 @@ struct ListArray(Movable, Sized):
 
     var dtype: DataType
     var length: Int
+    var nulls: Int
     var offset: Int
     var bitmap: Buffer
     var offsets: Buffer
@@ -418,6 +428,7 @@ struct ListArray(Movable, Sized):
 
         self.dtype = data.dtype.copy()
         self.length = data.length
+        self.nulls = data.nulls
         self.offset = data.offset
         self.bitmap = data.bitmap
         self.offsets = data.buffers[0]
@@ -442,11 +453,12 @@ struct ListArray(Movable, Sized):
         )
         return Array(
             dtype=self.values.dtype.copy(),
+            length=end - start,
+            nulls=-1,
             bitmap=self.values.bitmap,
             buffers=self.values.buffers.copy(),
-            offset=start,
-            length=end - start,
             children=self.values.children.copy(),
+            offset=start,
         )
 
 
@@ -457,6 +469,7 @@ struct FixedSizeListArray(Movable, Sized):
 
     var dtype: DataType
     var length: Int
+    var nulls: Int
     var offset: Int
     var bitmap: Buffer
     var values: Array
@@ -475,6 +488,7 @@ struct FixedSizeListArray(Movable, Sized):
 
         self.dtype = data.dtype.copy()
         self.length = data.length
+        self.nulls = data.nulls
         self.offset = data.offset
         self.bitmap = data.bitmap
         self.values = data.children[0].copy()
@@ -490,11 +504,12 @@ struct FixedSizeListArray(Movable, Sized):
         var start = (self.offset + index) * list_size
         return Array(
             dtype=self.values.dtype.copy(),
+            length=list_size,
+            nulls=-1,
             bitmap=self.values.bitmap,
             buffers=self.values.buffers.copy(),
-            offset=start,
-            length=list_size,
             children=self.values.children.copy(),
+            offset=start,
         )
 
     fn to_device(self, ctx: DeviceContext) raises -> FixedSizeListArray:
@@ -504,15 +519,17 @@ struct FixedSizeListArray(Movable, Sized):
             new_buffers.append(self.values.buffers[i].to_device(ctx))
         var new_child = Array(
             dtype=self.values.dtype.copy(),
+            length=self.values.length,
+            nulls=self.values.nulls,
             bitmap=self.values.bitmap.to_device(ctx),
             buffers=new_buffers^,
-            offset=self.values.offset,
-            length=self.values.length,
             children=List[Array](),
+            offset=self.values.offset,
         )
         return FixedSizeListArray(
             dtype=self.dtype.copy(),
             length=self.length,
+            nulls=self.nulls,
             offset=self.offset,
             bitmap=self.bitmap.to_device(ctx),
             values=new_child^,
@@ -526,12 +543,14 @@ struct StructArray(Movable, Sized):
 
     var dtype: DataType
     var length: Int
+    var nulls: Int
     var bitmap: Buffer
     var children: List[Array]
 
     fn __init__(out self, *, ref data: Array):
         self.dtype = data.dtype.copy()
         self.length = data.length
+        self.nulls = data.nulls
         self.bitmap = data.bitmap
         self.children = data.children.copy()
 
@@ -613,10 +632,15 @@ struct ChunkedArray(Stringable):
             for i in range(len(chunk.children)):
                 children.append(chunk.children[i].copy())
             start += chunk_length
+        var frozen_bitmap = bitmap.freeze()
+        var nulls = self.length - bitmap_count_ones(
+            frozen_bitmap.unsafe_ptr(), frozen_bitmap.size
+        )
         combined = Array(
             dtype=self.dtype.copy(),
             length=self.length,
-            bitmap=bitmap.freeze(),
+            nulls=nulls,
+            bitmap=frozen_bitmap^,
             buffers=buffers^,
             children=children^,
             offset=0,

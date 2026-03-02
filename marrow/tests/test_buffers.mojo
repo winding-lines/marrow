@@ -1,8 +1,33 @@
 import math
 from testing import assert_equal, assert_true, assert_false, TestSuite
-from marrow.test_fixtures.arrays import assert_bitmap_set
+from reflection import call_location
 
 from marrow.buffers import *
+
+
+@always_inline
+def assert_bitmap_set(
+    ptr: UnsafePointer[UInt8, MutAnyOrigin],
+    n_bits: Int,
+    expected_true_pos: List[Int],
+    message: StringLiteral,
+) -> None:
+    var list_pos = 0
+    for i in range(n_bits):
+        var expected_value = False
+        if list_pos < len(expected_true_pos):
+            if expected_true_pos[list_pos] == i:
+                expected_value = True
+                list_pos += 1
+        var current_value = Bool((ptr[i // 8] >> UInt8(i % 8)) & 1)
+        assert_equal(
+            current_value,
+            expected_value,
+            String(
+                "{}: Bitmap index {} is {}, expected {} as per list position {}"
+            ).format(message, i, current_value, expected_value, list_pos),
+            location=call_location(),
+        )
 
 
 def is_aligned[

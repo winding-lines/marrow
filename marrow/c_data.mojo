@@ -403,6 +403,7 @@ struct CArrowArray(Movable):
         return Array(
             dtype=dtype.copy(),
             length=Int(self.length),
+            nulls=Int(self.null_count),
             bitmap=bitmap^,
             buffers=buffers^,
             children=children^,

@@ -162,6 +162,7 @@ fn _cosine_similarity_gpu[
     )
     return PrimitiveArray[T](
         length=n_vectors,
+        nulls=0,
         offset=0,
         bitmap=bm.freeze().to_device(ctx),
         buffer=buf^,

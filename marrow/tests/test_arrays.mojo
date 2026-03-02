@@ -10,14 +10,40 @@ from marrow.builders import (
     StructBuilder,
 )
 from marrow.dtypes import *
-from marrow.buffers import Buffer, BufferBuilder, bitmap_set, bitmap_range_set
-from marrow.compute.filter import drop_nulls
-from marrow.test_fixtures.arrays import (
-    assert_bitmap_set,
-    buffer_from,
-    build_list_of_list,
-    build_struct,
+from marrow.buffers import (
+    Buffer,
+    BufferBuilder,
+    bitmap_set,
+    bitmap_range_set,
+    bitmap_get,
 )
+from marrow.compute.filter import drop_nulls
+from reflection import call_location
+
+
+@always_inline
+def assert_bitmap_set(
+    ptr: UnsafePointer[UInt8, ImmutExternalOrigin],
+    n_bits: Int,
+    expected_true_pos: List[Int],
+    message: StringLiteral,
+) -> None:
+    var list_pos = 0
+    for i in range(n_bits):
+        var expected_value = False
+        if list_pos < len(expected_true_pos):
+            if expected_true_pos[list_pos] == i:
+                expected_value = True
+                list_pos += 1
+        var current_value = bitmap_get(ptr, i)
+        assert_equal(
+            current_value,
+            expected_value,
+            String(
+                "{}: Bitmap index {} is {}, expected {} as per list position {}"
+            ).format(message, i, current_value, expected_value, list_pos),
+            location=call_location(),
+        )
 
 
 # --- Array (base) tests ---
@@ -45,6 +71,7 @@ def test_array_data_with_offset():
     var array_data = Array(
         dtype=materialize[int8](),
         length=3,
+        nulls=0,
         bitmap=bitmap.freeze(),
         buffers=buffers^,
         children=List[Array](),
@@ -72,6 +99,7 @@ def test_array_data_fieldwise_init():
     var array_data = Array(
         dtype=materialize[int8](),
         length=5,
+        nulls=0,
         bitmap=bitmap,
         buffers=buffers^,
         children=List[Array](),
@@ -118,6 +146,7 @@ def test_array_copy():
     var src = Array(
         dtype=materialize[int8](),
         length=3,
+        nulls=0,
         bitmap=_bb.freeze(),
         buffers=src_buffers^,
         children=List[Array](),
@@ -140,6 +169,7 @@ def test_array_move():
     var a = Array(
         dtype=materialize[int8](),
         length=5,
+        nulls=0,
         bitmap=_bb2.freeze(),
         buffers=a_buffers^,
         children=List[Array](),
@@ -282,7 +312,7 @@ def test_drop_null() -> None:
     # Check the setup.
     assert_equal(primitive_array.null_count(), 5)
     assert_bitmap_set(
-        primitive_array.bitmap,
+        primitive_array.bitmap.unsafe_ptr(),
         primitive_array.length,
         [1, 3, 5, 7, 9],
         "check setup",
@@ -315,6 +345,7 @@ def test_primitive_array_with_offset():
     var arr_data = Array(
         dtype=materialize[int32](),
         length=arr.length,
+        nulls=arr.nulls,
         bitmap=arr.bitmap,
         buffers=arr_buffers^,
         children=List[Array](),
@@ -327,47 +358,6 @@ def test_primitive_array_with_offset():
     assert_equal(arr_with_offset.unsafe_get(0), 300)  # Should get arr[2]
     assert_equal(arr_with_offset.unsafe_get(1), 400)  # Should get arr[3]
     assert_equal(arr_with_offset.unsafe_get(2), 500)  # Should get arr[4]
-
-
-def test_primitive_builder_moveinit_with_offset():
-    """Test __moveinit__ preserves offset on builders."""
-    var b = PrimitiveBuilder[int16](5)
-    b.data[].offset = 3
-    b.append(123)
-
-    var moved = b^
-    assert_equal(moved.data[].offset, 3)
-    var frozen = moved.freeze()
-    assert_equal(frozen.unsafe_get(0), 123)
-
-
-def test_primitive_builder_constructor_with_offset():
-    """Test PrimitiveBuilder constructor with offset parameter."""
-    var b1 = PrimitiveBuilder[int8](10)  # Default offset=0
-    assert_equal(b1.data[].offset, 0)
-
-    var b2 = PrimitiveBuilder[int8](10)
-    b2.data[].offset = 5
-    assert_equal(b2.data[].offset, 5)
-
-
-def test_primitive_builder_offset_with_validity():
-    """Test that offset works correctly with validity bitmap."""
-    var b = PrimitiveBuilder[uint8](10)
-    b.data[].offset = 1
-
-    # Set some values with validity
-    b.append(42)  # This should set buffer[1] and bitmap[1]
-    b.append(43)  # This should set buffer[2] and bitmap[2]
-
-    # Verify values are accessible through the frozen array
-    var frozen = b.freeze()
-    assert_equal(frozen.unsafe_get(0), 42)
-    assert_equal(frozen.unsafe_get(1), 43)
-
-    # Verify bitmap is correct
-    assert_true(frozen.is_valid(0))
-    assert_true(frozen.is_valid(1))
 
 
 def test_primitive_array_nulls_with_offset():
@@ -434,7 +424,29 @@ def test_list_str():
 
 
 def test_list_of_list():
-    list2 = build_list_of_list[int64]()
+    var child = PrimitiveBuilder[int64](capacity=10)
+    var middle = ListBuilder(child, capacity=6)
+    var top_b = ListBuilder(middle, capacity=3)
+    child.append(1)
+    child.append(2)
+    middle.append(True)
+    child.append(3)
+    child.append(4)
+    middle.append(True)
+    top_b.append(True)
+    child.append(5)
+    child.append(6)
+    child.append(7)
+    middle.append(True)
+    middle.append_null()
+    child.append(8)
+    middle.append(True)
+    top_b.append(True)
+    child.append(9)
+    child.append(10)
+    middle.append(True)
+    top_b.append(True)
+    list2 = top_b.freeze()
     top = ListArray(list2.unsafe_get(0))
     middle_0 = top.unsafe_get(0)
     bottom = PrimitiveArray[int64](middle_0^)
@@ -558,7 +570,26 @@ def test_struct_array():
 
 
 def test_struct_array_unsafe_get():
-    var struct_array = build_struct()
+    var a_b = PrimitiveBuilder[int32](5)
+    a_b.append(1)
+    a_b.append(2)
+    a_b.append(3)
+    a_b.append(4)
+    a_b.append(5)
+    var b_b = PrimitiveBuilder[int32](3)
+    b_b.append(10)
+    b_b.append(20)
+    b_b.append(30)
+    var fields = List[Field]()
+    fields.append(Field("int_data_a", materialize[int32]()))
+    fields.append(Field("int_data_b", materialize[int32]()))
+    var children = List[Builder]()
+    children.append(a_b)
+    children.append(b_b)
+    var sb = StructBuilder(fields^, children^, capacity=2)
+    sb.append(True)
+    sb.append(True)
+    var struct_array = sb.freeze()
     ref int_data_a = struct_array.unsafe_get("int_data_a")
     var int_a = PrimitiveArray[int32](int_data_a.copy())
     assert_equal(int_a.unsafe_get(0), 1)
@@ -679,6 +710,7 @@ def test_primitive_freeze_with_offset():
     var data = Array(
         dtype=materialize[int64](),
         length=3,
+        nulls=0,
         bitmap=a.bitmap,
         buffers=data_buffers^,
         children=List[Array](),

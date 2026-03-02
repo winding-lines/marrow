@@ -26,7 +26,7 @@ Example
 
 from memory import memcpy, ArcPointer
 from sys import size_of
-from .buffers import Buffer, BufferBuilder, bitmap_set
+from .buffers import Buffer, BufferBuilder, bitmap_set, bitmap_count_ones
 from .dtypes import *
 from .arrays import (
     Array,
@@ -90,12 +90,17 @@ struct BuilderData(Movable):
         Each buffer and bitmap is transferred to the returned Array; fresh
         empty allocations are installed so the builder can be reused.
         """
+        var frozen_bitmap = self.bitmap.freeze()
+        var nulls = self.length - bitmap_count_ones(
+            frozen_bitmap.unsafe_ptr(), frozen_bitmap.size
+        )
         var result = Array(
             dtype=self.dtype.copy(),
             length=self.length,
-            bitmap=self.bitmap.freeze()^,
-            buffers=self._freeze_buffers()^,
-            children=self._freeze_children()^,
+            nulls=nulls,
+            bitmap=frozen_bitmap^,
+            buffers=self._freeze_buffers(),
+            children=self._freeze_children(),
             offset=0,
         )
         self.length = 0
@@ -151,6 +156,10 @@ struct Builder(Copyable, Movable):
 
     @implicit
     fn __init__(out self, value: StringBuilder):
+        self.data = value.data
+
+    @implicit
+    fn __init__(out self, value: ListBuilder):
         self.data = value.data
 
 

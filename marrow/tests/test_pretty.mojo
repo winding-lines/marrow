@@ -4,17 +4,13 @@ from marrow.arrays import *
 from marrow.buffers import bitmap_range_set, bitmap_set
 from marrow.builders import (
     Builder,
+    ListBuilder,
     PrimitiveBuilder,
     StringBuilder,
     StructBuilder,
 )
 from marrow.dtypes import *
 from marrow.pretty import ArrayPrinter
-from marrow.test_fixtures.arrays import (
-    build_list_of_int,
-    build_list_of_list,
-    build_struct,
-)
 
 
 def _fmt(arr: Array, limit: Int = 3) -> String:
@@ -64,7 +60,25 @@ def test_format_string():
 
 
 def test_format_list():
-    var arr = build_list_of_int[int64]()
+    var child = PrimitiveBuilder[int64](capacity=10)
+    var list_b = ListBuilder(child, capacity=6)
+    child.append(1)
+    child.append(2)
+    list_b.append(True)
+    child.append(3)
+    child.append(4)
+    list_b.append(True)
+    child.append(5)
+    child.append(6)
+    child.append(7)
+    list_b.append(True)
+    list_b.append_null()
+    child.append(8)
+    list_b.append(True)
+    child.append(9)
+    child.append(10)
+    list_b.append(True)
+    var arr = list_b.freeze()
     assert_equal(
         _fmt(Array(arr^), limit=3),
         (
@@ -76,7 +90,29 @@ def test_format_list():
 
 
 def test_format_list_of_list():
-    var arr = build_list_of_list[int16]()
+    var child = PrimitiveBuilder[int16](capacity=10)
+    var middle = ListBuilder(child, capacity=6)
+    var top = ListBuilder(middle, capacity=3)
+    child.append(1)
+    child.append(2)
+    middle.append(True)
+    child.append(3)
+    child.append(4)
+    middle.append(True)
+    top.append(True)
+    child.append(5)
+    child.append(6)
+    child.append(7)
+    middle.append(True)
+    middle.append_null()
+    child.append(8)
+    middle.append(True)
+    top.append(True)
+    child.append(9)
+    child.append(10)
+    middle.append(True)
+    top.append(True)
+    var arr = top.freeze()
     assert_equal(
         _fmt(Array(arr^)),
         (
@@ -85,13 +121,32 @@ def test_format_list_of_list():
             " ListArray([PrimitiveArray[int16]([5, 6, 7]),"
             " NULL,"
             " PrimitiveArray[int16]([8])]),"
-            " ListArray([PrimitiveArray[int16]([9, 10])]), ...])"
+            " ListArray([PrimitiveArray[int16]([9, 10])])])"
         ),
     )
 
 
 def test_format_struct():
-    var struct_arr = build_struct()
+    var a_b = PrimitiveBuilder[int32](5)
+    a_b.append(1)
+    a_b.append(2)
+    a_b.append(3)
+    a_b.append(4)
+    a_b.append(5)
+    var b_b = PrimitiveBuilder[int32](3)
+    b_b.append(10)
+    b_b.append(20)
+    b_b.append(30)
+    var fields = List[Field]()
+    fields.append(Field("int_data_a", materialize[int32]()))
+    fields.append(Field("int_data_b", materialize[int32]()))
+    var children = List[Builder]()
+    children.append(a_b)
+    children.append(b_b)
+    var sb = StructBuilder(fields^, children^, capacity=2)
+    sb.append(True)
+    sb.append(True)
+    var struct_arr = sb.freeze()
     assert_equal(
         _fmt(Array(struct_arr^), limit=3),
         (

@@ -176,6 +176,7 @@ fn unary_simd[
 
     return PrimitiveArray[T](
         length=length,
+        nulls=0,
         offset=0,
         bitmap=bm,
         buffer=buf.freeze(),
@@ -256,6 +257,7 @@ fn binary_simd[
 
     return PrimitiveArray[T](
         length=length,
+        nulls=0,
         offset=0,
         bitmap=bm,
         buffer=buf.freeze(),
@@ -481,6 +483,7 @@ fn binary_gpu[
     )
     return PrimitiveArray[T](
         length=length,
+        nulls=0,
         offset=0,
         bitmap=bm.freeze().to_device(ctx),
         buffer=buf^,

@@ -179,6 +179,7 @@ struct BufferBuilder(Movable):
         self.ptr = ptr
         self.size = size
 
+    # TODO: remove this, use alloc[Dtype.bool] instead
     @staticmethod
     fn alloc_bits[I: Intable](n_bits: I) -> BufferBuilder:
         """Allocate a zeroed buffer large enough to hold n_bits bit-packed values.
@@ -195,6 +196,7 @@ struct BufferBuilder(Movable):
         memset_zero(ptr, byte_size)
         return BufferBuilder(ptr, byte_size)
 
+    # TODO: rename it to finish()
     fn freeze(mut self) -> Buffer:
         """Snapshot the mutable builder into an immutable Buffer and reset state.
 
@@ -220,6 +222,7 @@ struct BufferBuilder(Movable):
         )
         return result^
 
+    # TODO: remove it in favor of resize[Dtype.bool]
     fn resize_bits[I: Intable](mut self, bit_length: I, bit_start: Int = 0):
         """Resize as a bit-packed bitmap, shifting bits if bit_start is non-zero.
         """
@@ -258,6 +261,7 @@ struct BufferBuilder(Movable):
         )
         swap(self, new)
 
+    # TODO: add special case for Dtype.bool
     @always_inline
     fn length[T: DType = DType.uint8](self) -> Int:
         return self.size // size_of[T]()
@@ -268,6 +272,7 @@ struct BufferBuilder(Movable):
     ](self) -> UnsafePointer[Scalar[T], MutExternalOrigin]:
         return self.ptr.bitcast[Scalar[T]]()
 
+    # TODO: would be nice to remove
     @always_inline
     fn unsafe_get[T: DType = DType.uint8](self, index: Int) -> Scalar[T]:
         comptime output = Scalar[T]
@@ -280,6 +285,7 @@ struct BufferBuilder(Movable):
         comptime output = Scalar[T]
         self.ptr.bitcast[output]()[index] = value
 
+    # TODO: would be nice to remove
     @always_inline
     fn simd_load[T: DType, W: Int](self, index: Int) -> SIMD[T, W]:
         """Load W elements of type T at element index `index`."""
@@ -421,6 +427,7 @@ struct Buffer(ImplicitlyCopyable, Movable):
         ctx.synchronize()
         return builder.freeze()
 
+    # TODO: use Dtype.bool specialization
     @always_inline
     fn length[T: DType = DType.uint8](self) -> Int:
         return self.size // size_of[T]()
@@ -460,6 +467,7 @@ struct Buffer(ImplicitlyCopyable, Movable):
 # ---------------------------------------------------------------------------
 
 
+# TODO: move it to unsafe_get with Dtype.bool specialization
 @always_inline
 fn bitmap_get(
     ptr: UnsafePointer[UInt8, ImmutExternalOrigin], index: Int
@@ -468,6 +476,7 @@ fn bitmap_get(
     return Bool((ptr[index // 8] >> UInt8(index % 8)) & 1)
 
 
+# TODO: move it to unsafe_set with Dtype.bool specialization
 @always_inline
 fn bitmap_set(
     ptr: UnsafePointer[UInt8, MutExternalOrigin], index: Int, value: Bool

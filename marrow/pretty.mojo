@@ -69,10 +69,11 @@ struct ArrayPrinter(ArrayVisitor):
                 self.visit(
                     Array(
                         dtype=array.values.dtype.copy(),
+                        length=end - start,
+                        nulls=0,
                         bitmap=array.values.bitmap,
                         buffers=array.values.buffers.copy(),
                         offset=start,
-                        length=end - start,
                         children=array.values.children.copy(),
                     )
                 )
@@ -94,10 +95,11 @@ struct ArrayPrinter(ArrayVisitor):
                 self.visit(
                     Array(
                         dtype=array.values.dtype.copy(),
+                        length=list_size,
+                        nulls=0,
                         bitmap=array.values.bitmap,
                         buffers=array.values.buffers.copy(),
                         offset=start,
-                        length=list_size,
                         children=array.values.children.copy(),
                     )
                 )
