@@ -16,10 +16,9 @@ of the data loop since there are no conditional branches.
 
 Kernel tiers for binary array → array operations
 -------------------------------------------------
-  - `binary_elementwise` — scalar function, per-element loop (compiler may
-    auto-vectorize); the default correctness path.
-  - `binary_simd` — SIMD-width-parameterized function, explicit SIMD loop;
-    use when guaranteed vectorization is needed.
+  - `binary_simd` — SIMD-width-parameterized function. Since `Scalar[T]` is
+    `SIMD[T, 1]`, all scalar functions satisfy this signature and the tail
+    loop uses `func[1]` as the scalar fallback. This is the only CPU tier.
   - `binary_gpu` — GPU kernel launch via DeviceContext; not all kernels need this.
 
 For reductions (array → scalar):
@@ -119,56 +118,47 @@ fn unary[
     return result^.freeze()
 
 
-# ---------------------------------------------------------------------------
-# Binary arity helpers
-# ---------------------------------------------------------------------------
+fn unary_simd[
+    T: DataType,
+    func: fn[W: Int](SIMD[T.native, W]) -> SIMD[T.native, W],
+](array: PrimitiveArray[T]) -> PrimitiveArray[T]:
+    """SIMD-vectorized unary kernel.
 
-
-fn binary_elementwise[
-    LT: DataType,
-    RT: DataType,
-    OutT: DataType,
-    func: fn(Scalar[LT.native], Scalar[RT.native]) -> Scalar[OutT.native],
-](
-    left: PrimitiveArray[LT],
-    right: PrimitiveArray[RT],
-    length: Int,
-) -> PrimitiveArray[OutT]:
-    """Generic elementwise binary kernel.
-
-    Computes the output validity bitmap upfront via `bitmap_and`, then applies
-    func to all elements without per-element null checks. Null slots in the
-    output have undefined data values but are correctly marked invalid.
+    Computes the output validity bitmap upfront (copy of input bitmap), then
+    applies func element-wise using full SIMD vectors followed by a scalar tail.
+    Null slots in the output have undefined data values but are correctly
+    marked invalid by the copied bitmap.
 
     Parameters:
-        LT: Left input DataType.
-        RT: Right input DataType.
-        OutT: Output DataType.
-        func: The element-wise scalar binary function.
+        T: Element DataType (same for input and output).
+        func: The element-wise unary function parameterized by SIMD width W.
+              Must accept and return SIMD[T.native, W] for any W >= 1.
 
     Args:
-        left: The left input array.
-        right: The right input array.
-        length: Number of elements to process.
+        array: The input array.
 
     Returns:
-        A new PrimitiveArray with func applied element-wise.
+        A new PrimitiveArray with func applied element-wise using SIMD.
     """
-    comptime lnative = LT.native
-    comptime rnative = RT.native
-    comptime outnative = OutT.native
+    comptime native = T.native
+    comptime width = simd_byte_width() // size_of[native]()
+    var length = len(array)
 
-    var bm = bitmap_and(left.bitmap, right.bitmap, length)
-    var buf = BufferBuilder.alloc[outnative](length)
+    var bm = Bitmap(copy=array.bitmap)
+    var buf = BufferBuilder.alloc[native](length)
 
-    var lp = left.buffer.unsafe_ptr[lnative](left.offset)
-    var rp = right.buffer.unsafe_ptr[rnative](right.offset)
-    var op = buf.unsafe_ptr[outnative]()
+    var ap = array.buffer.unsafe_ptr[native](array.offset)
+    var op = buf.unsafe_ptr[native]()
 
-    for i in range(length):
-        op[i] = func(lp[i], rp[i])
+    var i = 0
+    while i + width <= length:
+        (op + i).store(func[width]((ap + i).load[width=width]()))
+        i += width
+    while i < length:
+        op[i] = func[1](ap[i])
+        i += 1
 
-    return PrimitiveArray[OutT](
+    return PrimitiveArray[T](
         length=length,
         offset=0,
         bitmap=bm,
@@ -176,14 +166,19 @@ fn binary_elementwise[
     )
 
 
+# ---------------------------------------------------------------------------
+# Binary arity helpers
+# ---------------------------------------------------------------------------
+
+
 fn binary_simd[
     T: DataType,
     func: fn[W: Int](SIMD[T.native, W], SIMD[T.native, W]) -> SIMD[T.native, W],
+    name: StringLiteral = "",
 ](
     left: PrimitiveArray[T],
     right: PrimitiveArray[T],
-    length: Int,
-) -> PrimitiveArray[T]:
+) raises -> PrimitiveArray[T]:
     """SIMD-vectorized binary kernel.
 
     Computes the output validity bitmap upfront via `bitmap_and`, then applies
@@ -195,15 +190,24 @@ fn binary_simd[
         T: Element DataType (same for both inputs and output).
         func: The element-wise binary function parameterized by SIMD width W.
               Must accept and return SIMD[T.native, W] for any W >= 1.
+        name: Operation name used in length-mismatch error messages.
 
     Args:
         left: The left input array.
         right: The right input array.
-        length: Number of elements to process.
 
     Returns:
         A new PrimitiveArray with func applied element-wise using SIMD.
     """
+    if len(left) != len(right):
+        raise Error(
+            String(name)
+            + ": arrays must have the same length, got "
+            + String(len(left))
+            + " and "
+            + String(len(right))
+        )
+    var length = len(left)
     comptime native = T.native
     comptime width = simd_byte_width() // size_of[native]()
 
@@ -274,43 +278,55 @@ fn reduce[
 
 fn binary_gpu_kernel[
     dtype: DType,
-    func: fn(Scalar[dtype], Scalar[dtype]) -> Scalar[dtype],
+    func: fn[W: Int](SIMD[dtype, W], SIMD[dtype, W]) -> SIMD[dtype, W],
 ](
     lhs: UnsafePointer[Scalar[dtype], MutAnyOrigin],
     rhs: UnsafePointer[Scalar[dtype], MutAnyOrigin],
     result: UnsafePointer[Scalar[dtype], MutAnyOrigin],
     length: Int,
 ):
-    """Generic GPU kernel: applies a binary scalar function element-wise."""
+    """Generic GPU kernel: applies a binary SIMD function element-wise (W=1 per thread)."""
     var tid = global_idx.x
     if tid < UInt(length):
-        result[tid] = func(lhs[tid], rhs[tid])
+        result[tid] = func[1](lhs[tid], rhs[tid])
 
 
 fn binary_gpu[
     T: DataType,
-    func: fn(Scalar[T.native], Scalar[T.native]) -> Scalar[T.native],
+    func: fn[W: Int](SIMD[T.native, W], SIMD[T.native, W]) -> SIMD[T.native, W],
+    name: StringLiteral = "",
 ](
     left: PrimitiveArray[T, MemorySpace.DEVICE],
     right: PrimitiveArray[T, MemorySpace.DEVICE],
-    length: Int,
     ctx: DeviceContext,
 ) raises -> PrimitiveArray[T, MemorySpace.DEVICE]:
     """GPU orchestrator: launches binary_gpu_kernel and returns a device array.
 
     Parameters:
         T: Element DataType.
-        func: Scalar binary function to apply element-wise on the GPU.
+        func: SIMD binary function (same signature as binary_simd). Called with W=1
+              per GPU thread since `Scalar[T] = SIMD[T, 1]`.
+        name: Operation name used in length-mismatch error messages.
 
     Args:
         left: Left operand (device-resident).
         right: Right operand (device-resident).
-        length: Number of elements to process.
         ctx: GPU device context.
 
     Returns:
         A new device-resident PrimitiveArray with func applied element-wise.
     """
+    comptime if not has_accelerator():
+        raise Error(String(name) + ": no GPU accelerator available on this system")
+    if len(left) != len(right):
+        raise Error(
+            String(name)
+            + ": arrays must have the same length, got "
+            + String(len(left))
+            + " and "
+            + String(len(right))
+        )
+    var length = len(left)
     comptime native = T.native
     comptime BLOCK_SIZE = 256
 

@@ -58,10 +58,10 @@ fn _bench_simd[T: DataType, size: Int](iters: Int) -> Float64:
     var lhs = _make_array[T](size)
     var rhs = _make_array[T](size)
     for _ in range(3):
-        _ = binary_simd[T, _add_simd[T.native]](lhs, rhs, size)
+        _ = binary_simd[T, _add_simd[T.native]](lhs, rhs)
     var start = perf_counter_ns()
     for _ in range(iters):
-        var result = binary_simd[T, _add_simd[T.native]](lhs, rhs, size)
+        var result = binary_simd[T, _add_simd[T.native]](lhs, rhs)
         keep(result.unsafe_get(0))
     return Float64(perf_counter_ns() - start) / Float64(iters) / 1000.0
 
@@ -107,7 +107,7 @@ fn bench_add_simd[T: DataType, size: Int](mut b: Bencher) raises:
     @always_inline
     @parameter
     fn call_fn() raises:
-        var result = binary_simd[T, _add_simd[T.native]](lhs, rhs, size)
+        var result = binary_simd[T, _add_simd[T.native]](lhs, rhs)
         keep(result.unsafe_get(0))
 
     b.iter[call_fn]()
