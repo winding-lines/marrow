@@ -466,10 +466,11 @@ fn binary_gpu[
 
 fn binary_array_dispatch[
     name: StringLiteral,
-    func: fn[T: DataType](PrimitiveArray[T], PrimitiveArray[T]) raises -> PrimitiveArray[T],
+    func: fn[T: DataType](PrimitiveArray[T], PrimitiveArray[T], Optional[DeviceContext]) raises -> PrimitiveArray[T],
 ](
     left: Array,
     right: Array,
+    ctx: Optional[DeviceContext] = None,
 ) raises -> Array:
     """Runtime-typed binary dispatch: checks dtype match, loops over numeric types.
 
@@ -480,6 +481,7 @@ fn binary_array_dispatch[
     Args:
         left: Left operand (runtime-typed Array).
         right: Right operand (runtime-typed Array).
+        ctx: GPU device context, forwarded to the typed kernel.
 
     Returns:
         A new Array with the element-wise result.
@@ -498,6 +500,7 @@ fn binary_array_dispatch[
                 func[dtype](
                     PrimitiveArray[dtype](data=left),
                     PrimitiveArray[dtype](data=right),
+                    ctx,
                 )
             )
     raise Error(String(name) + ": unsupported dtype " + String(left.dtype))

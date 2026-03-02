@@ -1,8 +1,8 @@
 """Element-wise arithmetic kernels — CPU SIMD and GPU specializations.
 
-Each public function has two overloads:
-  - CPU: operates on PrimitiveArray[T] using SIMD vectorization.
-  - GPU: operates on device-resident PrimitiveArray[T, DEVICE] via a GPU kernel.
+Each public function dispatches based on the optional `ctx` argument:
+  - CPU (default): operates on PrimitiveArray[T] using SIMD vectorization.
+  - GPU (ctx provided): operates on device-resident PrimitiveArray[T] via a GPU kernel.
 
 The SIMD helper functions (fn[W: Int](SIMD[T, W], ...) -> SIMD[T, W]) are shared
 between CPU and GPU paths. Since Scalar[T] = SIMD[T, 1], the GPU kernel calls
@@ -77,38 +77,26 @@ fn _abs[T: DType, W: Int](a: SIMD[T, W]) -> SIMD[T, W]:
 
 fn add[
     T: DataType
-](left: PrimitiveArray[T], right: PrimitiveArray[T]) raises -> PrimitiveArray[T]:
+](
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
+    ctx: Optional[DeviceContext] = None,
+) raises -> PrimitiveArray[T]:
     """Element-wise addition of two primitive arrays.
 
     Args:
         left: Left operand array.
         right: Right operand array.
+        ctx: GPU device context. If provided, runs on GPU; otherwise uses CPU SIMD.
 
     Returns:
         A new PrimitiveArray where result[i] = left[i] + right[i].
         Null if either input is null at that position.
     """
-    return binary_simd[T, _add[T.native], "add"](left, right)
-
-
-fn add[
-    T: DataType
-](
-    left: PrimitiveArray[T],
-    right: PrimitiveArray[T],
-    ctx: DeviceContext,
-) raises -> PrimitiveArray[T]:
-    """Element-wise addition on device-resident arrays.
-
-    Args:
-        left: Left operand (device-resident).
-        right: Right operand (device-resident).
-        ctx: GPU device context.
-
-    Returns:
-        A new device-resident PrimitiveArray where result[i] = left[i] + right[i].
-    """
-    return binary_gpu[T, _add[T.native], "add"](left, right, ctx)
+    if ctx:
+        return binary_gpu[T, _add[T.native], "add"](left, right, ctx.value())
+    else:
+        return binary_simd[T, _add[T.native], "add"](left, right)
 
 
 fn add(
@@ -125,29 +113,26 @@ fn add(
 
 fn sub[
     T: DataType
-](left: PrimitiveArray[T], right: PrimitiveArray[T]) raises -> PrimitiveArray[T]:
+](
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
+    ctx: Optional[DeviceContext] = None,
+) raises -> PrimitiveArray[T]:
     """Element-wise subtraction of two primitive arrays.
 
     Args:
         left: Left operand array.
         right: Right operand array.
+        ctx: GPU device context. If provided, runs on GPU; otherwise uses CPU SIMD.
 
     Returns:
         A new PrimitiveArray where result[i] = left[i] - right[i].
         Null if either input is null at that position.
     """
-    return binary_simd[T, _sub[T.native], "sub"](left, right)
-
-
-fn sub[
-    T: DataType
-](
-    left: PrimitiveArray[T],
-    right: PrimitiveArray[T],
-    ctx: DeviceContext,
-) raises -> PrimitiveArray[T]:
-    """Element-wise subtraction on device-resident arrays."""
-    return binary_gpu[T, _sub[T.native], "sub"](left, right, ctx)
+    if ctx:
+        return binary_gpu[T, _sub[T.native], "sub"](left, right, ctx.value())
+    else:
+        return binary_simd[T, _sub[T.native], "sub"](left, right)
 
 
 fn sub(
@@ -164,29 +149,26 @@ fn sub(
 
 fn mul[
     T: DataType
-](left: PrimitiveArray[T], right: PrimitiveArray[T]) raises -> PrimitiveArray[T]:
+](
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
+    ctx: Optional[DeviceContext] = None,
+) raises -> PrimitiveArray[T]:
     """Element-wise multiplication of two primitive arrays.
 
     Args:
         left: Left operand array.
         right: Right operand array.
+        ctx: GPU device context. If provided, runs on GPU; otherwise uses CPU SIMD.
 
     Returns:
         A new PrimitiveArray where result[i] = left[i] * right[i].
         Null if either input is null at that position.
     """
+    if ctx:
+        return binary_gpu[T, _mul[T.native], "mul"](left, right, ctx.value())
+    else:
     return binary_simd[T, _mul[T.native], "mul"](left, right)
-
-
-fn mul[
-    T: DataType
-](
-    left: PrimitiveArray[T],
-    right: PrimitiveArray[T],
-    ctx: DeviceContext,
-) raises -> PrimitiveArray[T]:
-    """Element-wise multiplication on device-resident arrays."""
-    return binary_gpu[T, _mul[T.native], "mul"](left, right, ctx)
 
 
 fn mul(
@@ -203,29 +185,26 @@ fn mul(
 
 fn div[
     T: DataType
-](left: PrimitiveArray[T], right: PrimitiveArray[T]) raises -> PrimitiveArray[T]:
+](
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
+    ctx: Optional[DeviceContext] = None,
+) raises -> PrimitiveArray[T]:
     """Element-wise true division of two primitive arrays.
 
     Args:
         left: Left operand array.
         right: Right operand array.
+        ctx: GPU device context. If provided, runs on GPU; otherwise uses CPU SIMD.
 
     Returns:
         A new PrimitiveArray where result[i] = left[i] / right[i].
         Null if either input is null at that position.
     """
-    return binary_simd[T, _div[T.native], "div"](left, right)
-
-
-fn div[
-    T: DataType
-](
-    left: PrimitiveArray[T],
-    right: PrimitiveArray[T],
-    ctx: DeviceContext,
-) raises -> PrimitiveArray[T]:
-    """Element-wise true division on device-resident arrays."""
-    return binary_gpu[T, _div[T.native], "div"](left, right, ctx)
+    if ctx:
+        return binary_gpu[T, _div[T.native], "div"](left, right, ctx.value())
+    else:
+        return binary_simd[T, _div[T.native], "div"](left, right)
 
 
 fn div(
@@ -242,33 +221,26 @@ fn div(
 
 fn floordiv[
     T: DataType
-](left: PrimitiveArray[T], right: PrimitiveArray[T]) raises -> PrimitiveArray[T]:
+](
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
+    ctx: Optional[DeviceContext] = None,
+) raises -> PrimitiveArray[T]:
     """Element-wise floor division of two primitive arrays.
 
     Args:
         left: Left operand array.
         right: Right operand array.
+        ctx: GPU device context. If provided, runs on GPU; otherwise uses CPU SIMD.
 
     Returns:
         A new PrimitiveArray where result[i] = left[i] // right[i].
         Null if either input is null at that position.
     """
-    return binary_simd[T, _floordiv[T.native], "floordiv"](left, right)
-
-
-fn floordiv[
-    T: DataType
-](
-    left: PrimitiveArray[T],
-    right: PrimitiveArray[T],
-    ctx: DeviceContext,
-) raises -> PrimitiveArray[T]:
-    """Element-wise floor division on device-resident arrays."""
-
-    comptime if has_accelerator():
-        return binary_gpu[T, _floordiv[T.native], "floordiv"](left, right, ctx)
+    if ctx:
+        return binary_gpu[T, _floordiv[T.native], "floordiv"](left, right, ctx.value())
     else:
-        raise Error("floordiv: no GPU accelerator available on this system")
+        return binary_simd[T, _floordiv[T.native], "floordiv"](left, right)
 
 
 fn floordiv(
@@ -285,29 +257,26 @@ fn floordiv(
 
 fn mod[
     T: DataType
-](left: PrimitiveArray[T], right: PrimitiveArray[T]) raises -> PrimitiveArray[T]:
+](
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
+    ctx: Optional[DeviceContext] = None,
+) raises -> PrimitiveArray[T]:
     """Element-wise modulo of two primitive arrays.
 
     Args:
         left: Left operand array.
         right: Right operand array.
+        ctx: GPU device context. If provided, runs on GPU; otherwise uses CPU SIMD.
 
     Returns:
         A new PrimitiveArray where result[i] = left[i] % right[i].
         Null if either input is null at that position.
     """
-    return binary_simd[T, _mod[T.native], "mod"](left, right)
-
-
-fn mod[
-    T: DataType
-](
-    left: PrimitiveArray[T],
-    right: PrimitiveArray[T],
-    ctx: DeviceContext,
-) raises -> PrimitiveArray[T]:
-    """Element-wise modulo on device-resident arrays."""
-    return binary_gpu[T, _mod[T.native], "mod"](left, right, ctx)
+    if ctx:
+        return binary_gpu[T, _mod[T.native], "mod"](left, right, ctx.value())
+    else:
+        return binary_simd[T, _mod[T.native], "mod"](left, right)
 
 
 fn mod(
@@ -324,29 +293,26 @@ fn mod(
 
 fn min_[
     T: DataType
-](left: PrimitiveArray[T], right: PrimitiveArray[T]) raises -> PrimitiveArray[T]:
+](
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
+    ctx: Optional[DeviceContext] = None,
+) raises -> PrimitiveArray[T]:
     """Element-wise minimum of two primitive arrays.
 
     Args:
         left: Left operand array.
         right: Right operand array.
+        ctx: GPU device context. If provided, runs on GPU; otherwise uses CPU SIMD.
 
     Returns:
         A new PrimitiveArray where result[i] = min(left[i], right[i]).
         Null if either input is null at that position.
     """
-    return binary_simd[T, _min[T.native], "min_"](left, right)
-
-
-fn min_[
-    T: DataType
-](
-    left: PrimitiveArray[T],
-    right: PrimitiveArray[T],
-    ctx: DeviceContext,
-) raises -> PrimitiveArray[T]:
-    """Element-wise minimum on device-resident arrays."""
-    return binary_gpu[T, _min[T.native], "min_"](left, right, ctx)
+    if ctx:
+        return binary_gpu[T, _min[T.native], "min_"](left, right, ctx.value())
+    else:
+        return binary_simd[T, _min[T.native], "min_"](left, right)
 
 
 fn min_(
@@ -363,29 +329,26 @@ fn min_(
 
 fn max_[
     T: DataType
-](left: PrimitiveArray[T], right: PrimitiveArray[T]) raises -> PrimitiveArray[T]:
+](
+    left: PrimitiveArray[T],
+    right: PrimitiveArray[T],
+    ctx: Optional[DeviceContext] = None,
+) raises -> PrimitiveArray[T]:
     """Element-wise maximum of two primitive arrays.
 
     Args:
         left: Left operand array.
         right: Right operand array.
+        ctx: GPU device context. If provided, runs on GPU; otherwise uses CPU SIMD.
 
     Returns:
         A new PrimitiveArray where result[i] = max(left[i], right[i]).
         Null if either input is null at that position.
     """
-    return binary_simd[T, _max[T.native], "max_"](left, right)
-
-
-fn max_[
-    T: DataType
-](
-    left: PrimitiveArray[T],
-    right: PrimitiveArray[T],
-    ctx: DeviceContext,
-) raises -> PrimitiveArray[T]:
-    """Element-wise maximum on device-resident arrays."""
-    return binary_gpu[T, _max[T.native], "max_"](left, right, ctx)
+    if ctx:
+        return binary_gpu[T, _max[T.native], "max_"](left, right, ctx.value())
+    else:
+        return binary_simd[T, _max[T.native], "max_"](left, right)
 
 
 fn max_(

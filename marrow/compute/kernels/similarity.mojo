@@ -178,15 +178,18 @@ fn cosine_similarity[
 ](
     vectors: FixedSizeListArray,
     query: PrimitiveArray[T],
+    ctx: Optional[DeviceContext] = None,
 ) raises -> PrimitiveArray[T]:
-    """Batch cosine similarity on CPU: N vectors vs one query → N scores.
+    """Batch cosine similarity: N vectors vs one query → N scores.
 
     Args:
         vectors: FixedSizeListArray of N vectors, each of dimension D.
         query: PrimitiveArray[T] of D elements (the query vector).
+        ctx: GPU device context. If provided, runs on GPU; otherwise uses CPU SIMD.
 
     Returns:
         PrimitiveArray[T] of N cosine similarity scores in [-1, 1].
+        When ctx is provided, result is device-resident; call `.to_host(ctx)` to read on CPU.
     """
     var dim = vectors.dtype.size
     var n_vectors = len(vectors)
@@ -198,41 +201,11 @@ fn cosine_similarity[
             )
         )
 
+    if ctx:
+        comptime if has_accelerator():
+            return _cosine_similarity_gpu[T](vectors, query, n_vectors, dim, ctx.value())
+        else:
+            raise Error(
+                "cosine_similarity: no GPU accelerator available on this system"
+            )
     return _cosine_similarity_no_nulls[T](vectors, query, n_vectors, dim)
-
-
-fn cosine_similarity[
-    T: DataType
-](
-    vectors: FixedSizeListArray,
-    query: PrimitiveArray[T],
-    ctx: DeviceContext,
-) raises -> PrimitiveArray[T]:
-    """GPU-accelerated batch cosine similarity on device-resident data.
-
-    Args:
-        vectors: Device-resident FixedSizeListArray of N vectors.
-        query: Device-resident PrimitiveArray[T] of D elements.
-        ctx: GPU device context.
-
-    Returns:
-        Device-resident PrimitiveArray[T] of N cosine similarity scores.
-        Call `.to_host(ctx)` to download to CPU memory.
-    """
-    var dim = vectors.dtype.size
-    var n_vectors = len(vectors)
-
-    if len(query) != dim:
-        raise Error(
-            "cosine_similarity: query length {} != vector dim {}".format(
-                len(query), dim
-            )
-        )
-
-    @parameter
-    if has_accelerator():
-        return _cosine_similarity_gpu[T](vectors, query, n_vectors, dim, ctx)
-    else:
-        raise Error(
-            "cosine_similarity: no GPU accelerator available on this system"
-        )
