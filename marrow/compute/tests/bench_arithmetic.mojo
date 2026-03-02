@@ -34,7 +34,7 @@ fn _make_array[T: DataType](size: Int) -> PrimitiveArray[T]:
     var b = PrimitiveBuilder[T](size)
     for i in range(size):
         b.unsafe_append(Scalar[T.native](i))
-    return b.freeze()
+    return b.finish()
 
 
 fn _make_array_with_nulls[T: DataType](size: Int) -> PrimitiveArray[T]:
@@ -45,7 +45,7 @@ fn _make_array_with_nulls[T: DataType](size: Int) -> PrimitiveArray[T]:
         if i % 10 != 0:
             b.bitmap.unsafe_set(i, True)
     b.length = size
-    return b.freeze()
+    return b.finish()
 
 
 # ---------------------------------------------------------------------------

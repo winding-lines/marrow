@@ -24,8 +24,8 @@ fn _make_vectors(n_vectors: Int, dim: Int) raises -> FixedSizeListArray:
         b.unsafe_append(
             Scalar[float32.native](((i * 7 + 13) % 1000) / 1000.0 - 0.5)
         )
-    var arr = b.freeze()
-    return FixedSizeListBuilder.from_values(Array(arr^), list_size=dim).freeze()
+    var arr = b.finish()
+    return FixedSizeListBuilder.from_values(Array(arr^), list_size=dim).finish()
 
 
 fn _make_query(dim: Int) -> PrimitiveArray[float32]:
@@ -35,7 +35,7 @@ fn _make_query(dim: Int) -> PrimitiveArray[float32]:
         b.unsafe_append(
             Scalar[float32.native](((i * 11 + 17) % 1000) / 1000.0 - 0.5)
         )
-    return b.freeze()
+    return b.finish()
 
 
 fn _bench_cpu(

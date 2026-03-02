@@ -54,7 +54,7 @@ def test_format_string():
     s.append("hello")
     s.append("world")
     assert_equal(
-        _fmt(Array(s.freeze())),
+        _fmt(Array(s.finish())),
         "StringArray([hello, world])",
     )
 
@@ -78,7 +78,7 @@ def test_format_list():
     child.append(9)
     child.append(10)
     list_b.append(True)
-    var arr = list_b.freeze()
+    var arr = list_b.finish()
     assert_equal(
         _fmt(Array(arr^), limit=3),
         (
@@ -112,7 +112,7 @@ def test_format_list_of_list():
     child.append(10)
     middle.append(True)
     top.append(True)
-    var arr = top.freeze()
+    var arr = top.finish()
     assert_equal(
         _fmt(Array(arr^)),
         (
@@ -146,7 +146,7 @@ def test_format_struct():
     var sb = StructBuilder(fields^, children^, capacity=2)
     sb.append(True)
     sb.append(True)
-    var struct_arr = sb.freeze()
+    var struct_arr = sb.finish()
     assert_equal(
         _fmt(Array(struct_arr^), limit=3),
         (
@@ -164,7 +164,7 @@ def test_format_empty_struct():
         Field("active", materialize[bool_]()),
     ]
     var s = StructBuilder(fields^, List[Builder](), capacity=10)
-    assert_equal(_fmt(Array(s.freeze())), "StructArray({})")
+    assert_equal(_fmt(Array(s.finish())), "StructArray({})")
 
 
 def test_format_chunked():
@@ -200,7 +200,7 @@ def test_format_limits():
 
 def test_format_empty_array():
     var b = PrimitiveBuilder[int32](0)
-    var arr = b.freeze()
+    var arr = b.finish()
     assert_equal(
         _fmt(Array(arr^)),
         "PrimitiveArray[int32]([])",
@@ -212,7 +212,7 @@ def test_format_all_nulls():
     b.data[].length = 3
     bitmap_range_set(b.data[].bitmap.ptr, 0, 3, False)
     assert_equal(
-        _fmt(Array(b.freeze())),
+        _fmt(Array(b.finish())),
         "PrimitiveArray[int32]([NULL, NULL, NULL])",
     )
 
@@ -225,7 +225,7 @@ def test_format_mixed_nulls():
     b.data[].length = 3
     b.append(4)
     assert_equal(
-        _fmt(Array(b.freeze())),
+        _fmt(Array(b.finish())),
         "PrimitiveArray[int32]([1, 2, NULL, ...])",
     )
 

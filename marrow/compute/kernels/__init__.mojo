@@ -93,7 +93,7 @@ fn bitmap_and(a: Buffer, b: Buffer, length: Int) -> Buffer:
         )
         i += 1
 
-    return result.freeze()
+    return result.finish()
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ fn unary[
         if array.is_valid(i):
             result.unsafe_set(i, func(array.unsafe_get(i)))
     result.length = length
-    return result.freeze()
+    return result.finish()
 
 
 fn unary_simd[
@@ -179,7 +179,7 @@ fn unary_simd[
         nulls=0,
         offset=0,
         bitmap=bm,
-        buffer=buf.freeze(),
+        buffer=buf.finish(),
     )
 
 
@@ -260,7 +260,7 @@ fn binary_simd[
         nulls=0,
         offset=0,
         bitmap=bm,
-        buffer=buf.freeze(),
+        buffer=buf.finish(),
     )
 
 
@@ -485,7 +485,7 @@ fn binary_gpu[
         length=length,
         nulls=0,
         offset=0,
-        bitmap=bm.freeze().to_device(ctx),
+        bitmap=bm.finish().to_device(ctx),
         buffer=buf^,
     )
 

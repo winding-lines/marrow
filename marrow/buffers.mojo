@@ -4,9 +4,9 @@ Lifecycle
 ---------
 1. **Allocate** a mutable builder:  `BufferBuilder.alloc[T](n)`
 2. **Write** through builder methods:  `builder.unsafe_set(i, v)`
-3. **Freeze** into an immutable buffer:  `builder.freeze()` → `Buffer`
+3. **Freeze** into an immutable buffer:  `builder.finish()` → `Buffer`
 
-`freeze()` is a zero-cost type-level cast (via `rebind`) because builders and
+`finish()` is a zero-cost type-level cast (via `rebind`) because builders and
 immutable buffers share the same in-memory layout — only the pointer origin
 differs.
 
@@ -165,7 +165,7 @@ struct BufferBuilder(Movable):
     """Mutable contiguous memory region with 64-byte alignment.
 
     Use `BufferBuilder.alloc()` to allocate, write with `unsafe_set()`,
-    then call `freeze()` to obtain an immutable `Buffer`.
+    then call `finish()` to obtain an immutable `Buffer`.
     """
 
     var ptr: UnsafePointer[UInt8, MutExternalOrigin]
@@ -196,8 +196,7 @@ struct BufferBuilder(Movable):
         memset_zero(ptr, byte_size)
         return BufferBuilder(ptr, byte_size)
 
-    # TODO: rename it to finish()
-    fn freeze(mut self) -> Buffer:
+    fn finish(mut self) -> Buffer:
         """Snapshot the mutable builder into an immutable Buffer and reset state.
 
         The current allocation is transferred to the returned Buffer via an
@@ -348,7 +347,7 @@ struct Buffer(ImplicitlyCopyable, Movable):
         """Allocate a zeroed buffer large enough to hold n_bits bit-packed values.
         """
         var b = BufferBuilder.alloc_bits(n_bits)
-        return b.freeze()
+        return b.finish()
 
     @staticmethod
     fn foreign_view[
@@ -425,7 +424,7 @@ struct Buffer(ImplicitlyCopyable, Movable):
         var builder = BufferBuilder.alloc(self.size)
         ctx.enqueue_copy(builder.ptr, self._device.value())
         ctx.synchronize()
-        return builder.freeze()
+        return builder.finish()
 
     # TODO: use Dtype.bool specialization
     @always_inline

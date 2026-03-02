@@ -2,7 +2,7 @@
 
 Every typed array (`BoolArray`, `PrimitiveArray`, `StringArray`, `ListArray`,
 `StructArray`) is immutable.  To *build* an array incrementally, use the
-corresponding builder from `marrow.builders` and call `freeze()`.
+corresponding builder from `marrow.builders` and call `finish()`.
 
 Array — the generic container
 -----------------------------
@@ -632,7 +632,7 @@ struct ChunkedArray(Stringable):
             for i in range(len(chunk.children)):
                 children.append(chunk.children[i].copy())
             start += chunk_length
-        var frozen_bitmap = bitmap.freeze()
+        var frozen_bitmap = bitmap.finish()
         var nulls = self.length - bitmap_count_ones(
             frozen_bitmap.unsafe_ptr(), frozen_bitmap.size
         )

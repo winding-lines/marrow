@@ -23,7 +23,7 @@ fn drop_nulls[
     for i in range(len(array)):
         if array.is_valid(i):
             result.append(array.unsafe_get(i))
-    return result.freeze()
+    return result.finish()
 
 
 fn drop_nulls(array: Array) raises -> Array:

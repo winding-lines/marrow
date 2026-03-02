@@ -19,7 +19,7 @@ def test_drop_nulls_typed():
     a.append(30)
     a.append_null()
     # [10, null, 30, null]
-    var result = drop_nulls[int32](a.freeze())
+    var result = drop_nulls[int32](a.finish())
     assert_equal(len(result), 2)
     assert_equal(result.unsafe_get(0), 10)
     assert_equal(result.unsafe_get(1), 30)

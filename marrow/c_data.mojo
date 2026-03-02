@@ -272,7 +272,7 @@ struct CArrowArray(Movable):
             # case we allocate a new owned buffer to hold the validity bitmap.
             var bm = BufferBuilder.alloc_bits(Int(self.length))
             bitmap_range_set(bm.ptr, 0, Int(self.length), True)
-            bitmap = bm.freeze()
+            bitmap = bm.finish()
 
         var buffers = List[Buffer]()
         var children = List[Array]()

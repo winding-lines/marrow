@@ -80,7 +80,7 @@ fn _cosine_similarity_no_nulls[
             op[i] = Scalar[native](0)
 
     result.data[].length = n_vectors
-    return result.freeze()
+    return result.finish()
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +164,7 @@ fn _cosine_similarity_gpu[
         length=n_vectors,
         nulls=0,
         offset=0,
-        bitmap=bm.freeze().to_device(ctx),
+        bitmap=bm.finish().to_device(ctx),
         buffer=buf^,
     )
 

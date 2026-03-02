@@ -22,7 +22,7 @@ fn _make_array[T: DataType](size: Int) -> PrimitiveArray[T]:
     var b = PrimitiveBuilder[T](size)
     for i in range(size):
         b.unsafe_append(Scalar[T.native](i))
-    return b.freeze()
+    return b.finish()
 
 
 fn _bench_cpu[T: DataType, size: Int](iters: Int) -> Float64:

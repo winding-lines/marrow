@@ -18,7 +18,7 @@ def test_sum_with_nulls():
     a.append(10)
     a.append(20)
     a.append_null()  # index 2 is null
-    var result = sum[int32](a.freeze())
+    var result = sum[int32](a.finish())
     assert_equal(result, 30)
 
 

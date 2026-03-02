@@ -3,7 +3,7 @@
 `Builder` is the type-erased, ref-counted mutable handle — the mutable counterpart
 of `Array`.  Typed builders (`BoolBuilder`, `PrimitiveBuilder[T]`, `StringBuilder`,
 `ListBuilder`, `FixedSizeListBuilder`, `StructBuilder`) each hold an
-`ArcPointer[BuilderData]` and expose a type-safe `append` / `freeze` API
+`ArcPointer[BuilderData]` and expose a type-safe `append` / `finish` API
 modelled after Arrow C++'s builder hierarchy.
 
 `BoolBuilder`, `PrimitiveBuilder[T]`, and `StringBuilder` implicitly convert to
@@ -16,7 +16,7 @@ Example
     var b = PrimitiveBuilder[int64](capacity=1024)
     b.append(42)
     b.append_null()
-    var arr = b.freeze()    # PrimitiveArray[int64]
+    var arr = b.finish()    # PrimitiveArray[int64]
 
     # PrimitiveBuilder implicitly converts to Builder
     var child = PrimitiveBuilder[float32](capacity=64)
@@ -53,7 +53,7 @@ struct BuilderData(Movable):
       - `children` — child builders for nested types, each an `ArcPointer[BuilderData]`
 
     Wrap in `ArcPointer[BuilderData]` (or use the `Builder` wrapper) for shared ownership.
-    Call `freeze()` to consume and produce an immutable `Array`.
+    Call `finish()` to consume and produce an immutable `Array`.
     """
 
     var dtype: DataType
@@ -83,14 +83,14 @@ struct BuilderData(Movable):
     fn __len__(self) -> Int:
         return self.length
 
-    fn freeze(mut self) -> Array:
+    fn finish(mut self) -> Array:
         """Snapshot the builder into an immutable `Array` and reset state.
 
         After this call the builder is reset to empty (length=0, capacity=0).
         Each buffer and bitmap is transferred to the returned Array; fresh
         empty allocations are installed so the builder can be reused.
         """
-        var frozen_bitmap = self.bitmap.freeze()
+        var frozen_bitmap = self.bitmap.finish()
         var nulls = self.length - bitmap_count_ones(
             frozen_bitmap.unsafe_ptr(), frozen_bitmap.size
         )
@@ -99,26 +99,26 @@ struct BuilderData(Movable):
             length=self.length,
             nulls=nulls,
             bitmap=frozen_bitmap^,
-            buffers=self._freeze_buffers(),
-            children=self._freeze_children(),
+            buffers=self._finish_buffers(),
+            children=self._finish_children(),
             offset=0,
         )
         self.length = 0
         self.capacity = 0
         return result^
 
-    fn _freeze_buffers(mut self) -> List[Buffer]:
-        # only to align with _freeze_children which is required to avoid recursion warning
+    fn _finish_buffers(mut self) -> List[Buffer]:
+        # only to align with _finish_children which is required to avoid recursion warning
         var frozen_buffers = List[Buffer]()
         for i in range(len(self.buffers)):
-            frozen_buffers.append(self.buffers[i][].freeze())
+            frozen_buffers.append(self.buffers[i][].finish())
         return frozen_buffers^
 
-    fn _freeze_children(mut self) -> List[Array]:
+    fn _finish_children(mut self) -> List[Array]:
         # indirect call to avoid "self recursive call will cause an infinite loop" warning
         var result = List[Array]()
         for i in range(len(self.children)):
-            result.append(self.children[i][].freeze())
+            result.append(self.children[i][].finish())
         return result^
 
 
@@ -172,7 +172,7 @@ struct BoolBuilder(Movable, Sized):
     """Builder for boolean arrays.
 
     buffers[0] — bit-packed boolean values
-    freeze() → BoolArray
+    finish() → BoolArray
     """
 
     var data: ArcPointer[BuilderData]
@@ -212,8 +212,8 @@ struct BoolBuilder(Movable, Sized):
         bitmap_set(self.data[].bitmap.ptr, self.data[].length, False)
         self.data[].length += 1
 
-    fn freeze(mut self) raises -> BoolArray:
-        return self.data[].freeze().as_bool()
+    fn finish(mut self) raises -> BoolArray:
+        return self.data[].finish().as_bool()
 
 
 # ---------------------------------------------------------------------------
@@ -278,8 +278,8 @@ struct PrimitiveBuilder[T: DataType](Movable, Sized):
         for value in values:
             self.append(value)
 
-    fn freeze(mut self) raises -> PrimitiveArray[Self.T]:
-        return self.data[].freeze().as_primitive[Self.T]()
+    fn finish(mut self) raises -> PrimitiveArray[Self.T]:
+        return self.data[].finish().as_primitive[Self.T]()
 
 
 # ---------------------------------------------------------------------------
@@ -350,8 +350,8 @@ struct StringBuilder(Movable, Sized):
             index + 1, last_offset
         )
 
-    fn freeze(mut self) raises -> StringArray:
-        return self.data[].freeze().as_string()
+    fn finish(mut self) raises -> StringArray:
+        return self.data[].finish().as_string()
 
 
 # ---------------------------------------------------------------------------
@@ -407,8 +407,8 @@ struct ListBuilder(Movable, Sized):
     fn append_null(mut self):
         self.append(False)
 
-    fn freeze(mut self) raises -> ListArray:
-        return self.data[].freeze().as_list()
+    fn finish(mut self) raises -> ListArray:
+        return self.data[].finish().as_list()
 
 
 # ---------------------------------------------------------------------------
@@ -458,8 +458,8 @@ struct FixedSizeListBuilder(Movable, Sized):
     fn append_null(mut self):
         self.append(False)
 
-    fn freeze(mut self) raises -> FixedSizeListArray:
-        return self.data[].freeze().as_fixed_size_list()
+    fn finish(mut self) raises -> FixedSizeListArray:
+        return self.data[].finish().as_fixed_size_list()
 
 
 # ---------------------------------------------------------------------------
@@ -514,8 +514,8 @@ struct StructBuilder(Movable, Sized):
     fn append_null(mut self):
         self.append(False)
 
-    fn freeze(mut self) raises -> StructArray:
-        return StructArray(data=self.data[].freeze())
+    fn finish(mut self) raises -> StructArray:
+        return StructArray(data=self.data[].finish())
 
 
 # ---------------------------------------------------------------------------
@@ -526,7 +526,7 @@ struct StructBuilder(Movable, Sized):
 fn array[T: DataType]() raises -> PrimitiveArray[T]:
     """Create an empty primitive array."""
     var b = PrimitiveBuilder[T](0)
-    return b.freeze()
+    return b.finish()
 
 
 fn array[T: DataType](values: List[Optional[Int]]) raises -> PrimitiveArray[T]:
@@ -537,7 +537,7 @@ fn array[T: DataType](values: List[Optional[Int]]) raises -> PrimitiveArray[T]:
             b.append(Scalar[T.native](value.value()))
         else:
             b.append_null()
-    return b.freeze()
+    return b.finish()
 
 
 fn array(values: List[Optional[Bool]]) raises -> BoolArray:
@@ -548,14 +548,14 @@ fn array(values: List[Optional[Bool]]) raises -> BoolArray:
             b.append(value.value())
         else:
             b.append_null()
-    return b.freeze()
+    return b.finish()
 
 
 fn nulls[T: DataType](size: Int) raises -> PrimitiveArray[T]:
     """Create a primitive array of `size` null values."""
     var b = PrimitiveBuilder[T](capacity=size)
     b.data[].length = size
-    return b.freeze()
+    return b.finish()
 
 
 fn arange[T: DataType](start: Int, end: Int) raises -> PrimitiveArray[T]:
@@ -564,4 +564,4 @@ fn arange[T: DataType](start: Int, end: Int) raises -> PrimitiveArray[T]:
     var b = PrimitiveBuilder[T](end - start)
     for i in range(start, end):
         b.append(Scalar[T.native](i))
-    return b.freeze()
+    return b.finish()

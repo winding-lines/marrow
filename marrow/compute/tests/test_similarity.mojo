@@ -16,7 +16,7 @@ def _make_vectors(*values: Float64, dim: Int) raises -> FixedSizeListArray:
     var builder = FixedSizeListBuilder(b, list_size=dim)
     for _ in range(n_lists):
         builder.append(True)
-    return builder.freeze()
+    return builder.finish()
 
 
 fn _make_query(*values: Float64) raises -> PrimitiveArray[float32]:
@@ -24,7 +24,7 @@ fn _make_query(*values: Float64) raises -> PrimitiveArray[float32]:
     var b = PrimitiveBuilder[float32](len(values))
     for v in values:
         b.append(Scalar[float32.native](v))
-    return b.freeze()
+    return b.finish()
 
 
 fn _approx_equal(a: Float64, b: Float64, tol: Float64 = 1e-5) -> Bool:
