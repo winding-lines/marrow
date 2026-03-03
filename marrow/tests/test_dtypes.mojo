@@ -100,19 +100,19 @@ def test_is_floating_point():
     assert_true(materialize[dt.float64]().is_floating_point())
 
 
-def test_bitwidth():
-    assert_equal(materialize[dt.int8]().bitwidth(), 8)
-    assert_equal(materialize[dt.int16]().bitwidth(), 16)
-    assert_equal(materialize[dt.int32]().bitwidth(), 32)
-    assert_equal(materialize[dt.int64]().bitwidth(), 64)
-    assert_equal(materialize[dt.uint8]().bitwidth(), 8)
-    assert_equal(materialize[dt.uint16]().bitwidth(), 16)
-    assert_equal(materialize[dt.uint32]().bitwidth(), 32)
-    assert_equal(materialize[dt.uint64]().bitwidth(), 64)
-    assert_equal(materialize[dt.bool_]().bitwidth(), 1)
-    assert_equal(materialize[dt.float32]().bitwidth(), 32)
-    assert_equal(materialize[dt.float64]().bitwidth(), 64)
-    assert_equal(dt.list_(materialize[dt.int64]()).bitwidth(), 0)
+def test_bit_width():
+    assert_equal(materialize[dt.int8]().bit_width(), 8)
+    assert_equal(materialize[dt.int16]().bit_width(), 16)
+    assert_equal(materialize[dt.int32]().bit_width(), 32)
+    assert_equal(materialize[dt.int64]().bit_width(), 64)
+    assert_equal(materialize[dt.uint8]().bit_width(), 8)
+    assert_equal(materialize[dt.uint16]().bit_width(), 16)
+    assert_equal(materialize[dt.uint32]().bit_width(), 32)
+    assert_equal(materialize[dt.uint64]().bit_width(), 64)
+    assert_equal(materialize[dt.bool_]().bit_width(), 1)
+    assert_equal(materialize[dt.float32]().bit_width(), 32)
+    assert_equal(materialize[dt.float64]().bit_width(), 64)
+    assert_equal(dt.list_(materialize[dt.int64]()).bit_width(), 0)
 
 
 def main():

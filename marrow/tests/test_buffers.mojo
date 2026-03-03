@@ -131,14 +131,14 @@ def test_bitmap_range_set():
     assert_bitmap_set(bitmap.ptr, n_bits, [], "reset")
 
     bitmap_range_set(bitmap.ptr, 0, 0, True)
-    assert_bitmap.unsafe_set[DType.bool](n_bits, [], "range 0")
+    assert_bitmap_set(bitmap.ptr, n_bits, [], "range 0")
 
     var to_test = [0, 1, 7, 8, 15]
     for pos in range(len(to_test)):
         _reset(bitmap, n_bits)
         var start_bit = to_test[pos]
         bitmap_range_set(bitmap.ptr, start_bit, 1, True)
-        assert_bitmap.unsafe_set[DType.bool](n_bits, [start_bit], "range  1")
+        assert_bitmap_set(bitmap.ptr, n_bits, [start_bit], "range  1")
         if to_test[pos] < n_bits - 1:
             _reset(bitmap, n_bits)
             bitmap_range_set(bitmap.ptr, start_bit, 2, True)

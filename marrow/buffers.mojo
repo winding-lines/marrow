@@ -91,35 +91,6 @@ struct MemorySpace(
             writer.write("unknown")
 
 
-# TODO: should be removed since DType should provide a size_of method
-fn dynamic_size_of(dtype: DType) -> Int:
-    """Get size of a dtype by dispatching to compile-time size_of."""
-    if dtype == DType.bool:
-        return size_of[DType.bool]()
-    elif dtype == DType.int8:
-        return size_of[DType.int8]()
-    elif dtype == DType.int16:
-        return size_of[DType.int16]()
-    elif dtype == DType.int32:
-        return size_of[DType.int32]()
-    elif dtype == DType.int64:
-        return size_of[DType.int64]()
-    elif dtype == DType.uint8:
-        return size_of[DType.uint8]()
-    elif dtype == DType.uint16:
-        return size_of[DType.uint16]()
-    elif dtype == DType.uint32:
-        return size_of[DType.uint32]()
-    elif dtype == DType.uint64:
-        return size_of[DType.uint64]()
-    elif dtype == DType.float32:
-        return size_of[DType.float32]()
-    elif dtype == DType.float64:
-        return size_of[DType.float64]()
-    debug_assert(False, "Can't get the size of ", dtype)
-    return 0
-
-
 comptime simd_width = simd_byte_width()
 
 comptime simd_widths = (simd_width, simd_width // 2, 1)
@@ -333,8 +304,7 @@ struct Buffer(ImplicitlyCopyable, Movable):
         I: Intable, //
     ](
         ptr: UnsafePointer[NoneType, MutAnyOrigin],
-        length: I,
-        dtype: DType,
+        size: I,
         owner: ArcPointer[Allocation],
     ) -> Buffer:
         """Create an immutable view into foreign memory.
@@ -348,7 +318,7 @@ struct Buffer(ImplicitlyCopyable, Movable):
             rebind[UnsafePointer[UInt8, ImmutExternalOrigin]](
                 ptr.bitcast[UInt8]()
             ),
-            math.align_up(Int(length) * dynamic_size_of(dtype), 64),
+            math.align_up(Int(size), 64),
         )
         result.dealloc = Optional(owner)
         return result^

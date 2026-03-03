@@ -264,7 +264,6 @@ struct CArrowArray(Movable):
             bitmap = Buffer.foreign_view(
                 self.buffers[0],
                 math.ceildiv(Int(length), 8),
-                DType.uint8,
                 keeper,
             )
         else:
@@ -293,7 +292,6 @@ struct CArrowArray(Movable):
             var values = Buffer.foreign_view(
                 self.buffers[1],
                 math.ceildiv(Int(length), 8),
-                DType.uint8,
                 keeper,
             )
             buffers.append(values^)
@@ -311,7 +309,7 @@ struct CArrowArray(Movable):
                     )
                 )
             var values = Buffer.foreign_view(
-                self.buffers[1], length, dtype.native, keeper
+                self.buffers[1], Int(length) * dtype.byte_width(), keeper
             )
             buffers.append(values^)
         elif dtype.is_list():
@@ -329,7 +327,7 @@ struct CArrowArray(Movable):
                 )
             # list has only an offsets buffer; child data lives in self.children
             var offsets = Buffer.foreign_view(
-                self.buffers[1], length + 1, DType.int32, keeper
+                self.buffers[1], (length + 1) * size_of[DType.int32](), keeper
             )
             buffers.append(offsets^)
             # add the single values child array
@@ -352,12 +350,10 @@ struct CArrowArray(Movable):
                     )
                 )
             var offsets = Buffer.foreign_view(
-                self.buffers[1], length + 1, DType.int32, keeper
+                self.buffers[1], (length + 1) * size_of[DType.int32](), keeper
             )
             var data_len = offsets.unsafe_get[DType.int32](Int(length))
-            var values = Buffer.foreign_view(
-                self.buffers[2], data_len, DType.uint8, keeper
-            )
+            var values = Buffer.foreign_view(self.buffers[2], data_len, keeper)
             buffers.append(offsets^)
             buffers.append(values^)
         elif dtype.is_fixed_size_list():

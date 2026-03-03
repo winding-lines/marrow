@@ -274,7 +274,7 @@ struct DataType(Copyable, Equatable, Representable, Stringable):
     fn is_bool(self) -> Bool:
         return self.code == BOOL
 
-    fn bitwidth(self) -> UInt8:
+    fn bit_width(self) -> UInt8:
         if self.code == BOOL:
             return 1
         elif self.code == INT8:
@@ -300,9 +300,12 @@ struct DataType(Copyable, Equatable, Representable, Stringable):
         else:
             return 0
 
+    fn byte_width(self) -> Int:
+        return Int(self.bit_width()) // 8
+
     @always_inline
     fn is_fixed_size(self) -> Bool:
-        return self.bitwidth() > 0
+        return self.bit_width() > 0
 
     @always_inline
     fn is_integer(self) -> Bool:
