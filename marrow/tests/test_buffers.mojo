@@ -1,6 +1,9 @@
 import math
+from sys import has_accelerator
 from testing import assert_equal, assert_true, assert_false, TestSuite
 from reflection import call_location
+from memory import ArcPointer
+from gpu.host import DeviceContext
 
 from marrow.buffers import *
 
@@ -111,7 +114,7 @@ def test_bitmap_get_set():
     assert_true(frozen.unsafe_get[DType.bool](1))
     assert_false(frozen.unsafe_get[DType.bool](2))
     # 10-bit bitmap → 2 bytes of actual data
-    assert_equal(bitmap_count_ones(frozen.unsafe_ptr(), math.ceildiv(10, 8)), 2)
+    assert_equal(bitmap_count_ones(frozen, math.ceildiv(10, 8)), 2)
 
 
 def _reset(mut bitmap: BufferBuilder, n_bits: Int):
@@ -179,11 +182,145 @@ def test_buffer_finish():
     assert_equal(frozen.length(), 64)
 
 
+def test_buffer_cpu_kind():
+    """CPU buffers from BufferBuilder.finish() have kind=CPU and are CPU-accessible."""
+    var b = BufferBuilder.alloc(64)
+    var frozen = b.finish()
+    assert_true(frozen.is_cpu())
+    assert_false(frozen.is_device())
+    assert_false(frozen.is_host())
+    assert_equal(frozen.device_type(), Int32(1))
+    assert_equal(frozen.device_id(), Int64(-1))
+
+
+def test_buffer_foreign_kind():
+    """Foreign CPU buffers are CPU-accessible; release fires on last drop."""
+    # n_released lives on the stack; its address is embedded in the buffer
+    # data so the release callback can increment it before freeing the memory.
+    var n_released: Int = 0
+    var raw = alloc[UInt8](size_of[UnsafePointer[Int, MutAnyOrigin]]())
+    raw.bitcast[UnsafePointer[Int, MutAnyOrigin]]()[0] = rebind[UnsafePointer[Int, MutAnyOrigin]](
+        UnsafePointer(to=n_released)
+    )
+
+    fn count_and_free(ptr: UnsafePointer[UInt8, MutAnyOrigin]) -> None:
+        var counter = ptr.bitcast[UnsafePointer[Int, MutAnyOrigin]]()[0]
+        counter[0] += 1
+        ptr.free()
+
+    var mut_ptr = rebind[UnsafePointer[UInt8, MutAnyOrigin]](raw)
+    var void_ptr = rebind[UnsafePointer[NoneType, MutAnyOrigin]](
+        raw.bitcast[NoneType]()
+    )
+    var keeper = ArcPointer(Allocation.foreign(mut_ptr, count_and_free))
+    var buf = Buffer.from_foreign(void_ptr, size_of[UnsafePointer[Int, MutAnyOrigin]](), keeper)
+    assert_true(buf.is_cpu())
+    assert_false(buf.is_device())
+    assert_false(buf.is_host())
+    assert_equal(buf.device_type(), Int32(1))
+    assert_equal(buf.device_id(), Int64(-1))
+    assert_equal(n_released, 0)
+    # Drop both ArcPointer copies; release fires exactly once on last drop.
+    _ = buf^
+    _ = keeper^
+    assert_equal(n_released, 1)
+
+
 def test_buffer_no_device():
     # CPU-allocated buffers have no device buffer
     var buf = BufferBuilder.alloc(10)
     var frozen = buf.finish()
-    assert_true(not frozen.has_device())
+    assert_false(frozen.is_device())
+
+
+def test_buffer_device_kind():
+    """GPU DEVICE buffers are not CPU-accessible."""
+    if not has_accelerator():
+        return
+    var ctx = DeviceContext()
+    var dev = ctx.enqueue_create_buffer[DType.uint8](64)
+    var buf = Buffer.from_device(dev, 64)
+    assert_true(buf.is_device())
+    assert_false(buf.is_cpu())
+    assert_false(buf.is_host())
+
+    # device_type inferred from context api: cuda→CUDA(2), hip→ROCM(10), metal→METAL(8)
+    var api = ctx.api()
+    var expected_dev_type: Int32
+    if api == "cuda":
+        expected_dev_type = DeviceType.CUDA
+    elif api == "hip":
+        expected_dev_type = DeviceType.ROCM
+    else:
+        expected_dev_type = DeviceType.METAL
+    assert_equal(buf.device_type(), expected_dev_type)
+    assert_equal(buf.device_id(), Int64(0))
+
+
+def test_buffer_host_kind():
+    """HOST (pinned) buffers are CPU-accessible with a valid ptr."""
+    if not has_accelerator():
+        return
+    var ctx = DeviceContext()
+    var host = ctx.enqueue_create_host_buffer[DType.uint8](64)
+    var buf = Buffer.from_host(host)
+    assert_true(buf.is_host())
+    assert_true(buf.is_cpu())
+    assert_false(buf.is_device())
+
+    # device_type inferred from context api; raises for unrecognised APIs (e.g. metal)
+    var api = ctx.api()
+    if api == "cuda":
+        assert_equal(buf.device_type(), DeviceType.CUDA_HOST)
+    elif api == "hip":
+        assert_equal(buf.device_type(), DeviceType.ROCM_HOST)
+    assert_equal(buf.device_id(), Int64(0))
+    # ptr is valid on CPU
+    assert_true(Int(buf.ptr) != 0)
+
+
+def test_buffer_host_builder():
+    """BufferBuilder.alloc_host + finish produce a valid HOST buffer."""
+    if not has_accelerator():
+        return
+    var ctx = DeviceContext()
+    var b = BufferBuilder.alloc_host[DType.uint8](ctx, 64)
+    b.unsafe_set(0, 7)
+    b.unsafe_set(1, 13)
+    var buf = b.finish()
+    assert_true(buf.is_host())
+    assert_true(buf.is_cpu())
+    assert_false(buf.is_device())
+
+    var api = ctx.api()
+    if api == "cuda":
+        assert_equal(buf.device_type(), DeviceType.CUDA_HOST)
+    elif api == "hip":
+        assert_equal(buf.device_type(), DeviceType.ROCM_HOST)
+    assert_equal(buf.device_id(), Int64(0))
+    assert_equal(buf.unsafe_get(0), UInt8(7))
+    assert_equal(buf.unsafe_get(1), UInt8(13))
+    # ptr must be valid (non-null) for a HOST buffer
+    assert_true(Int(buf.ptr) != 0)
+
+
+def test_buffer_to_cpu_round_trip():
+    """Upload a CPU buffer to GPU then download back; data is preserved."""
+    if not has_accelerator():
+        return
+    var ctx = DeviceContext()
+    var builder = BufferBuilder.alloc[DType.uint8](64)
+    builder.unsafe_set(0, 42)
+    builder.unsafe_set(1, 99)
+    var cpu_buf = builder.finish()
+
+    var dev_buf = cpu_buf.to_device(ctx)
+    assert_true(dev_buf.is_device())
+
+    var back = dev_buf.to_cpu(ctx)
+    assert_true(back.is_cpu())
+    assert_equal(back.unsafe_get(0), 42)
+    assert_equal(back.unsafe_get(1), 99)
 
 
 def main():

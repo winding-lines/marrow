@@ -50,7 +50,7 @@ from gpu import global_idx
 from gpu.host import DeviceContext
 
 from marrow.arrays import PrimitiveArray, Array
-from marrow.buffers import Buffer, BufferBuilder, MemorySpace, bitmap_range_set
+from marrow.buffers import Buffer, BufferBuilder, bitmap_range_set
 from marrow.builders import PrimitiveBuilder
 from marrow.dtypes import DataType, all_numeric_dtypes, materialize
 
@@ -478,7 +478,7 @@ fn binary_gpu[
     var bm = BufferBuilder.alloc[DType.bool](length)
     bitmap_range_set(bm.ptr, 0, length, True)
     var device_bytes = length * size_of[native]()
-    var buf = Buffer.device_only(
+    var buf = Buffer.from_device(
         out_dev.create_sub_buffer[DType.uint8](0, device_bytes), device_bytes
     )
     return PrimitiveArray[T](

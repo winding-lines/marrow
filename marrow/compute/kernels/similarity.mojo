@@ -8,7 +8,7 @@ from gpu import global_idx
 from gpu.host import DeviceBuffer, DeviceContext
 
 from marrow.arrays import PrimitiveArray, FixedSizeListArray
-from marrow.buffers import Buffer, BufferBuilder, MemorySpace, bitmap_range_set
+from marrow.buffers import Buffer, BufferBuilder, bitmap_range_set
 from marrow.builders import PrimitiveBuilder
 from marrow.dtypes import DataType
 
@@ -157,7 +157,7 @@ fn _cosine_similarity_gpu[
     var bm = BufferBuilder.alloc[DType.bool](n_vectors)
     bitmap_range_set(bm.ptr, 0, n_vectors, True)
     var device_bytes = n_vectors * size_of[native]()
-    var buf = Buffer.device_only(
+    var buf = Buffer.from_device(
         out_dev.create_sub_buffer[DType.uint8](0, device_bytes), device_bytes
     )
     return PrimitiveArray[T](
@@ -190,7 +190,7 @@ fn cosine_similarity[
 
     Returns:
         PrimitiveArray[T] of N cosine similarity scores in [-1, 1].
-        When ctx is provided, result is device-resident; call `.to_host(ctx)` to read on CPU.
+        When ctx is provided, result is device-resident; call `.to_cpu(ctx)` to read on CPU.
     """
     var dim = vectors.dtype.size
     var n_vectors = len(vectors)

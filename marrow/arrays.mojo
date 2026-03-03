@@ -21,7 +21,6 @@ from gpu.host import DeviceContext
 from .buffers import (
     Buffer,
     BufferBuilder,
-    MemorySpace,
     bitmap_extend,
     bitmap_count_ones,
 )
@@ -244,14 +243,14 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
             buffer=self.buffer.to_device(ctx),
         )
 
-    fn to_host(self, ctx: DeviceContext) raises -> PrimitiveArray[Self.T]:
-        """Download array data from the GPU."""
+    fn to_cpu(self, ctx: DeviceContext) raises -> PrimitiveArray[Self.T]:
+        """Download array data from the GPU to owned CPU heap buffers."""
         return PrimitiveArray[Self.T](
             length=self.length,
             nulls=self.nulls,
             offset=0,
-            bitmap=self.bitmap.to_host(ctx),
-            buffer=self.buffer.to_host(ctx),
+            bitmap=self.bitmap.to_cpu(ctx),
+            buffer=self.buffer.to_cpu(ctx),
         )
 
 
@@ -573,9 +572,7 @@ struct ChunkedArray(Stringable):
                 children.append(chunk.children[i].copy())
             start += chunk_length
         var frozen_bitmap = bitmap.finish()
-        var nulls = self.length - bitmap_count_ones(
-            frozen_bitmap.unsafe_ptr(), frozen_bitmap.size
-        )
+        var nulls = self.length - bitmap_count_ones(frozen_bitmap, frozen_bitmap.size)
         combined = Array(
             dtype=self.dtype.copy(),
             length=self.length,

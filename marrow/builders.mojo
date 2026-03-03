@@ -85,6 +85,8 @@ struct BuilderData(Movable):
     fn __len__(self) -> Int:
         return self.length
 
+    # TODO: must do shrink_to_fit!
+    # TODO: maintain null count and remove bitmap count ones
     fn finish(mut self) -> Array:
         """Snapshot the builder into an immutable `Array` and reset state.
 
@@ -93,9 +95,7 @@ struct BuilderData(Movable):
         empty allocations are installed so the builder can be reused.
         """
         var frozen_bitmap = self.bitmap.finish()
-        var nulls = self.length - bitmap_count_ones(
-            frozen_bitmap.unsafe_ptr(), frozen_bitmap.size
-        )
+        var nulls = self.length - bitmap_count_ones(frozen_bitmap, frozen_bitmap.size)
         var result = Array(
             dtype=self.dtype.copy(),
             length=self.length,
@@ -194,13 +194,13 @@ struct PrimitiveBuilder[T: DataType](Movable, Sized):
     fn __len__(self) -> Int:
         return self.data[].length
 
-    fn grow(mut self, capacity: Int):
+    fn grow(mut self, capacity: Int) raises:
         self.data[].bitmap.resize[DType.bool](capacity)
         self.data[].buffers[0][].resize[Self.T.native](capacity)
         self.data[].capacity = capacity
 
     # @always_inline
-    fn append(mut self, value: Self.scalar):
+    fn append(mut self, value: Self.scalar) raises:
         if self.data[].length >= self.data[].capacity:
             self.grow(max(self.data[].capacity * 2, self.data[].length + 1))
         self.data[].bitmap.unsafe_set[DType.bool](self.data[].length, True)
@@ -209,38 +209,38 @@ struct PrimitiveBuilder[T: DataType](Movable, Sized):
         )
         self.data[].length += 1
 
-    fn append(mut self, value: Bool):
+    fn append(mut self, value: Bool) raises:
         comptime assert (
             Self.T == bool_
         ), "append(Bool) only supported for PrimitiveBuilder[bool_]"
         self.append(Self.scalar(value))
 
     @always_inline
-    fn append_null(mut self):
+    fn append_null(mut self) raises:
         if self.data[].length >= self.data[].capacity:
             self.grow(max(self.data[].capacity * 2, self.data[].length + 1))
         self.data[].bitmap.unsafe_set[DType.bool](self.data[].length, False)
         self.data[].length += 1
 
-    fn extend(mut self, values: List[Self.scalar]):
+    fn extend(mut self, values: List[Self.scalar]) raises:
         var new_len = self.data[].length + len(values)
         if new_len >= self.data[].capacity:
             self.grow(max(self.data[].capacity * 2, new_len))
         for value in values:
             self.append(value)
 
-    fn extend(mut self, values: List[Self.scalar], valid: List[Bool]):
+    fn extend(mut self, values: List[Self.scalar], valid: List[Bool]) raises:
         for i in range(len(values)):
             if valid[i]:
                 self.append(values[i])
             else:
                 self.append_null()
 
-    fn append_nulls(mut self, n: Int):
+    fn append_nulls(mut self, n: Int) raises:
         for _ in range(n):
             self.append_null()
 
-    fn reserve(mut self, additional: Int):
+    fn reserve(mut self, additional: Int) raises:
         var needed = self.data[].length + additional
         if needed > self.data[].capacity:
             self.grow(needed)
@@ -283,12 +283,12 @@ struct StringBuilder(Movable, Sized):
     fn __len__(self) -> Int:
         return self.data[].length
 
-    fn grow(mut self, capacity: Int):
+    fn grow(mut self, capacity: Int) raises:
         self.data[].bitmap.resize[DType.bool](capacity)
         self.data[].buffers[0][].resize[DType.uint32](capacity + 1)
         self.data[].capacity = capacity
 
-    fn append(mut self, value: String):
+    fn append(mut self, value: String) raises:
         if self.data[].length >= self.data[].capacity:
             self.grow(max(self.data[].capacity * 2, self.data[].length + 1))
         var index = self.data[].length
@@ -306,7 +306,7 @@ struct StringBuilder(Movable, Sized):
             count=len(value),
         )
 
-    fn append_null(mut self):
+    fn append_null(mut self) raises:
         if self.data[].length >= self.data[].capacity:
             self.grow(max(self.data[].capacity * 2, self.data[].length + 1))
         var index = self.data[].length
@@ -317,18 +317,18 @@ struct StringBuilder(Movable, Sized):
             index + 1, last_offset
         )
 
-    fn extend(mut self, values: List[String], valid: List[Bool]):
+    fn extend(mut self, values: List[String], valid: List[Bool]) raises:
         for i in range(len(values)):
             if valid[i]:
                 self.append(values[i])
             else:
                 self.append_null()
 
-    fn append_nulls(mut self, n: Int):
+    fn append_nulls(mut self, n: Int) raises:
         for _ in range(n):
             self.append_null()
 
-    fn reserve(mut self, additional: Int):
+    fn reserve(mut self, additional: Int) raises:
         var needed = self.data[].length + additional
         if needed > self.data[].capacity:
             self.grow(needed)
@@ -372,12 +372,12 @@ struct ListBuilder(Movable, Sized):
     fn child(self) -> Builder:
         return Builder(self.data[].children[0])
 
-    fn grow(mut self, capacity: Int):
+    fn grow(mut self, capacity: Int) raises:
         self.data[].bitmap.resize[DType.bool](capacity)
         self.data[].buffers[0][].resize[DType.uint32](capacity + 1)
         self.data[].capacity = capacity
 
-    fn append(mut self, is_valid: Bool):
+    fn append(mut self, is_valid: Bool) raises:
         if self.data[].length >= self.data[].capacity:
             self.grow(max(self.data[].capacity * 2, self.data[].length + 1))
         self.data[].bitmap.unsafe_set[DType.bool](self.data[].length, is_valid)
@@ -387,14 +387,14 @@ struct ListBuilder(Movable, Sized):
         )
         self.data[].length += 1
 
-    fn append_null(mut self):
+    fn append_null(mut self) raises:
         self.append(False)
 
-    fn append_nulls(mut self, n: Int):
+    fn append_nulls(mut self, n: Int) raises:
         for _ in range(n):
             self.append_null()
 
-    fn reserve(mut self, additional: Int):
+    fn reserve(mut self, additional: Int) raises:
         var needed = self.data[].length + additional
         if needed > self.data[].capacity:
             self.grow(needed)
@@ -437,24 +437,24 @@ struct FixedSizeListBuilder(Movable, Sized):
     fn child(self) -> Builder:
         return Builder(self.data[].children[0])
 
-    fn grow(mut self, capacity: Int):
+    fn grow(mut self, capacity: Int) raises:
         self.data[].bitmap.resize[DType.bool](capacity)
         self.data[].capacity = capacity
 
-    fn append(mut self, is_valid: Bool):
+    fn append(mut self, is_valid: Bool) raises:
         if self.data[].length >= self.data[].capacity:
             self.grow(max(self.data[].capacity * 2, self.data[].length + 1))
         self.data[].bitmap.unsafe_set[DType.bool](self.data[].length, is_valid)
         self.data[].length += 1
 
-    fn append_null(mut self):
+    fn append_null(mut self) raises:
         self.append(False)
 
-    fn append_nulls(mut self, n: Int):
+    fn append_nulls(mut self, n: Int) raises:
         for _ in range(n):
             self.append_null()
 
-    fn reserve(mut self, additional: Int):
+    fn reserve(mut self, additional: Int) raises:
         var needed = self.data[].length + additional
         if needed > self.data[].capacity:
             self.grow(needed)
@@ -502,24 +502,24 @@ struct StructBuilder(Movable, Sized):
     fn child(self, index: Int) -> Builder:
         return Builder(self.data[].children[index])
 
-    fn grow(mut self, capacity: Int):
+    fn grow(mut self, capacity: Int) raises:
         self.data[].bitmap.resize[DType.bool](capacity)
         self.data[].capacity = capacity
 
-    fn append(mut self, is_valid: Bool):
+    fn append(mut self, is_valid: Bool) raises:
         if self.data[].length >= self.data[].capacity:
             self.grow(max(self.data[].capacity * 2, self.data[].length + 1))
         self.data[].bitmap.unsafe_set[DType.bool](self.data[].length, is_valid)
         self.data[].length += 1
 
-    fn append_null(mut self):
+    fn append_null(mut self) raises:
         self.append(False)
 
-    fn append_nulls(mut self, n: Int):
+    fn append_nulls(mut self, n: Int) raises:
         for _ in range(n):
             self.append_null()
 
-    fn reserve(mut self, additional: Int):
+    fn reserve(mut self, additional: Int) raises:
         var needed = self.data[].length + additional
         if needed > self.data[].capacity:
             self.grow(needed)

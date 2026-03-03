@@ -1,7 +1,7 @@
 from ffi import external_call, c_char
 from memory import ArcPointer, memcpy
 from sys import size_of
-from .buffers import Allocation, Buffer, BufferBuilder, bitmap_range_set
+from .buffers import Allocation, Buffer, BufferBuilder, DeviceType, bitmap_range_set
 
 import math
 from python import Python, PythonObject
@@ -261,7 +261,7 @@ struct CArrowArray(Movable):
 
         var bitmap: Buffer
         if self.buffers[0]:
-            bitmap = Buffer.foreign_view(
+            bitmap = Buffer.from_foreign(
                 self.buffers[0],
                 math.ceildiv(Int(length), 8),
                 keeper,
@@ -289,7 +289,7 @@ struct CArrowArray(Movable):
                         self.n_children
                     )
                 )
-            var values = Buffer.foreign_view(
+            var values = Buffer.from_foreign(
                 self.buffers[1],
                 math.ceildiv(Int(length), 8),
                 keeper,
@@ -308,7 +308,7 @@ struct CArrowArray(Movable):
                         self.n_children
                     )
                 )
-            var values = Buffer.foreign_view(
+            var values = Buffer.from_foreign(
                 self.buffers[1], Int(length) * dtype.byte_width(), keeper
             )
             buffers.append(values^)
@@ -326,7 +326,7 @@ struct CArrowArray(Movable):
                     )
                 )
             # list has only an offsets buffer; child data lives in self.children
-            var offsets = Buffer.foreign_view(
+            var offsets = Buffer.from_foreign(
                 self.buffers[1], (length + 1) * size_of[DType.int32](), keeper
             )
             buffers.append(offsets^)
@@ -349,11 +349,11 @@ struct CArrowArray(Movable):
                         self.n_children
                     )
                 )
-            var offsets = Buffer.foreign_view(
+            var offsets = Buffer.from_foreign(
                 self.buffers[1], (length + 1) * size_of[DType.int32](), keeper
             )
             var data_len = offsets.unsafe_get[DType.int32](Int(length))
-            var values = Buffer.foreign_view(self.buffers[2], data_len, keeper)
+            var values = Buffer.from_foreign(self.buffers[2], data_len, keeper)
             buffers.append(offsets^)
             buffers.append(values^)
         elif dtype.is_fixed_size_list():
@@ -406,6 +406,27 @@ struct CArrowArray(Movable):
             offset=Int(self.offset),
         )
 
+    fn _to_device_array(
+        self,
+        dtype: DataType,
+        keeper: ArcPointer[Allocation],
+        device_type: Int32,
+        device_id: Int64,
+    ) raises -> Array:
+        """Build an Array from device-resident CArrowArray buffers.
+
+        TODO: Zero-copy import of device arrays requires wrapping raw device
+        pointers in Mojo's DeviceBuffer.  This is not yet supported because
+        DeviceBuffer construction needs an AsyncRT handle that is not provided
+        by the C Device Data Interface.  Once Mojo exposes an API to adopt a
+        raw device pointer into a DeviceBuffer, this method can be completed.
+        """
+        raise Error(
+            "_to_device_array: zero-copy device array import is not yet"
+            " implemented; Mojo does not yet expose a way to wrap raw device"
+            " pointers in DeviceBuffer without an AsyncRT handle"
+        )
+
     fn to_array(deinit self, dtype: DataType) raises -> Array:
         """Convert to an Array, taking ownership of the C struct.
 
@@ -417,12 +438,107 @@ struct CArrowArray(Movable):
         var heap_c = alloc[CArrowArray](1)
         heap_c.init_pointee_move(self^)
         var keeper = ArcPointer(
-            Allocation(
-                ptr=heap_c.bitcast[UInt8](),
-                release=_release_c_array,
-            )
+            Allocation.foreign(heap_c.bitcast[UInt8](), _release_c_array)
         )
         return heap_c[]._to_array(dtype, keeper)
+
+
+# ---------------------------------------------------------------------------
+# Arrow C Device Data Interface
+# https://arrow.apache.org/docs/format/CDeviceDataInterface.html
+# ---------------------------------------------------------------------------
+
+
+
+fn _release_c_device_array(ptr: UnsafePointer[UInt8, MutAnyOrigin]) -> None:
+    """Release callback for CArrowDeviceArray imported via the C Device Data Interface.
+
+    Called when the last Buffer that references the imported array is dropped.
+    Invokes the C-level release callback on the embedded ArrowArray, then frees
+    the Mojo heap allocation.
+    """
+    var c_ptr = ptr.bitcast[CArrowDeviceArray]()
+    c_ptr[].array.release(UnsafePointer(to=c_ptr[].array))
+    c_ptr.free()
+
+
+@fieldwise_init
+struct CArrowDeviceArray(Movable):
+    """Arrow C Device Data Interface array struct.
+
+    Extends ArrowArray with device-location metadata.  All metadata fields
+    (`device_id`, `device_type`, `sync_event`, `reserved`) reside in CPU
+    memory; only the buffer *pointers* inside `array.buffers` point to
+    device memory.
+
+    Layout matches the C spec:
+        struct ArrowDeviceArray {
+            struct ArrowArray array;
+            int64_t device_id;
+            ArrowDeviceType device_type;  // int32_t
+            void* sync_event;
+            int64_t reserved[3];          // must be zero
+        };
+
+    Notes:
+        - `reserved0/1/2` must all be zero (spec requirement).
+        - `sync_event` should be synchronized via `ctx.synchronize()` before
+          accessing buffers if non-null; per-event-type sync is a future enhancement.
+        - `from_pyarrow` is not yet implemented — PyArrow's `__arrow_c_device_array__`
+          protocol support is still evolving.
+    """
+
+    var array: CArrowArray
+    var device_id: Int64
+    var device_type: Int32
+    var _pad: Int32  # explicit padding to align sync_event to 8 bytes (C ABI)
+    var sync_event: OpaquePointer[MutAnyOrigin]
+    var reserved0: Int64
+    var reserved1: Int64
+    var reserved2: Int64
+
+    fn to_array(
+        deinit self, dtype: DataType, ctx: DeviceContext
+    ) raises -> Array:
+        """Import a device array into marrow, taking ownership of the C struct.
+
+        The CArrowDeviceArray is moved onto the heap and wrapped in an
+        `Allocation`.  All Buffer views share the same `ArcPointer[Allocation]`
+        keeper so the C release callback fires when the last buffer is dropped.
+
+        If `sync_event` is non-null, `ctx.synchronize()` is called first to
+        ensure all preceding device operations are complete before the buffers
+        are accessed.
+
+        Args:
+            dtype: The Arrow data type describing the array's schema.
+            ctx:   The DeviceContext associated with the device buffers.
+
+        Returns:
+            An `Array` whose buffers reference the device memory directly
+            (zero-copy for device types; CPU for ARROW_DEVICE_CPU).
+        """
+        if self.sync_event:
+            ctx.synchronize()
+
+        var heap_c = alloc[CArrowDeviceArray](1)
+        heap_c.init_pointee_move(self^)
+        var keeper = ArcPointer(
+            Allocation.foreign(heap_c.bitcast[UInt8](), _release_c_device_array)
+        )
+
+        var device_type = heap_c[].device_type
+        var device_id = heap_c[].device_id
+
+        # For CPU device type, delegate to the existing CArrowArray import path.
+        if device_type == DeviceType.CPU:
+            return heap_c[].array._to_array(dtype, keeper)
+
+        # For device memory, wrap each buffer pointer as a DEVICE buffer.
+        # The raw pointers in array.buffers point to device-resident memory.
+        return heap_c[].array._to_device_array(
+            dtype, keeper, device_type, device_id
+        )
 
 
 # See: https://arrow.apache.org/docs/format/CStreamInterface.html
