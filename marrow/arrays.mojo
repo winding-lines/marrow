@@ -1,8 +1,10 @@
 """Arrow columnar arrays — always immutable.
 
-Every typed array (`BoolArray`, `PrimitiveArray`, `StringArray`, `ListArray`,
-`StructArray`) is immutable.  To *build* an array incrementally, use the
-corresponding builder from `marrow.builders` and call `finish()`.
+Every typed array (`PrimitiveArray`, `StringArray`, `ListArray`, `StructArray`)
+is immutable.  To *build* an array incrementally, use the corresponding builder
+from `marrow.builders` and call `finish()`.
+
+`BoolArray` is an alias for `PrimitiveArray[bool_]`.
 
 Array — the generic container
 -----------------------------
@@ -53,16 +55,6 @@ struct Array(Copyable, Movable, Stringable):
         self.offset = array.offset
         self.bitmap = array.bitmap
         self.buffers = [array.buffer]
-        self.children = []
-
-    @implicit
-    fn __init__(out self, array: BoolArray):
-        self.dtype = materialize[bool_]()
-        self.length = array.length
-        self.nulls = array.nulls
-        self.offset = array.offset
-        self.bitmap = array.bitmap
-        self.buffers = [array.values]
         self.children = []
 
     @implicit
@@ -140,7 +132,7 @@ struct Array(Copyable, Movable, Stringable):
         return PrimitiveArray[T](self)
 
     fn as_bool(self) raises -> BoolArray:
-        return BoolArray(self)
+        return self.as_primitive[bool_]()
 
     fn as_int8(self) raises -> PrimitiveArray[int8]:
         return PrimitiveArray[int8](self)
@@ -183,58 +175,6 @@ struct Array(Copyable, Movable, Stringable):
 
     fn as_struct(self) raises -> StructArray:
         return StructArray(data=self)
-
-
-@fieldwise_init
-struct BoolArray(Movable, Sized):
-    """An immutable Arrow array of boolean values stored as a bit-packed buffer.
-    """
-
-    var length: Int
-    var nulls: Int
-    var offset: Int
-    var bitmap: Buffer
-    var values: Buffer
-
-    fn __init__(out self, ref data: Array, offset: Int = 0) raises:
-        if data.dtype != materialize[bool_]():
-            raise Error(
-                "Unexpected dtype '"
-                + String(data.dtype)
-                + "' instead of 'bool'."
-            )
-        elif len(data.buffers) != 1:
-            raise Error("BoolArray requires exactly one buffer")
-        self.length = data.length
-        self.nulls = data.nulls
-        self.offset = data.offset + offset
-        self.bitmap = data.bitmap
-        self.values = data.buffers[0]
-
-    @always_inline
-    fn __len__(self) -> Int:
-        return self.length
-
-    @always_inline
-    fn is_valid(self, index: Int) -> Bool:
-        return self.bitmap.unsafe_get[DType.bool](index + self.offset)
-
-    @always_inline
-    fn unsafe_get(self, index: Int) -> Bool:
-        return self.values.unsafe_get[DType.bool](index + self.offset)
-
-    fn __getitem__(self, index: Int) raises -> Bool:
-        if index < 0 or index >= self.length:
-            raise Error(
-                "index "
-                + String(index)
-                + " out of bounds for length "
-                + String(self.length)
-            )
-        return self.unsafe_get(index)
-
-    fn null_count(self) -> Int:
-        return self.nulls
 
 
 @fieldwise_init
@@ -315,6 +255,7 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
         )
 
 
+comptime BoolArray = PrimitiveArray[bool_]
 comptime Int8Array = PrimitiveArray[int8]
 comptime Int16Array = PrimitiveArray[int16]
 comptime Int32Array = PrimitiveArray[int32]

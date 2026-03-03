@@ -1,15 +1,17 @@
 """Array builders for constructing Arrow arrays incrementally.
 
 `Builder` is the type-erased, ref-counted mutable handle — the mutable counterpart
-of `Array`.  Typed builders (`BoolBuilder`, `PrimitiveBuilder[T]`, `StringBuilder`,
+of `Array`.  Typed builders (`PrimitiveBuilder[T]`, `StringBuilder`,
 `ListBuilder`, `FixedSizeListBuilder`, `StructBuilder`) each hold an
 `ArcPointer[BuilderData]` and expose a type-safe `append` / `finish` API
 modelled after Arrow C++'s builder hierarchy.
 
-`BoolBuilder`, `PrimitiveBuilder[T]`, and `StringBuilder` implicitly convert to
-`Builder`, enabling them to be passed directly as child builders to composite types.
+`PrimitiveBuilder[T]`, and `StringBuilder` implicitly convert to `Builder`,
+enabling them to be passed directly as child builders to composite types.
 The conversion clones the `ArcPointer`, so the typed builder remains usable after
 passing it to a composite builder.
+
+`BoolBuilder` is an alias for `PrimitiveBuilder[bool_]`.
 
 Example
 -------
@@ -130,12 +132,12 @@ struct BuilderData(Movable):
 struct Builder(Copyable, Movable):
     """Type-erased ref-counted handle to `BuilderData` — the mutable counterpart of `Array`.
 
-    `BoolBuilder`, `PrimitiveBuilder[T]`, and `StringBuilder` implicitly convert to
-    `Builder` by cloning the shared `ArcPointer`, so the original typed builder
-    remains usable after the conversion.
+    `PrimitiveBuilder[T]` and `StringBuilder` implicitly convert to `Builder` by
+    cloning the shared `ArcPointer`, so the original typed builder remains usable
+    after the conversion.  (`BoolBuilder` is an alias for `PrimitiveBuilder[bool_]`
+    and therefore converts the same way.)
 
-    Used as the child builder type for `ListBuilder`, `FixedSizeListBuilder`,
-    and `StructBuilder`.
+    Used as the child builder type for `ListBuilder`, `FixedSizeListBuilder`, and `StructBuilder`.
     """
 
     var data: ArcPointer[BuilderData]
@@ -145,10 +147,6 @@ struct Builder(Copyable, Movable):
 
     fn __copyinit__(out self, copy: Self):
         self.data = copy.data
-
-    @implicit
-    fn __init__(out self, value: BoolBuilder):
-        self.data = value.data
 
     @implicit
     fn __init__[T: DataType](out self, value: PrimitiveBuilder[T]):
@@ -161,59 +159,6 @@ struct Builder(Copyable, Movable):
     @implicit
     fn __init__(out self, value: ListBuilder):
         self.data = value.data
-
-
-# ---------------------------------------------------------------------------
-# BoolBuilder
-# ---------------------------------------------------------------------------
-
-
-struct BoolBuilder(Movable, Sized):
-    """Builder for boolean arrays.
-
-    buffers[0] — bit-packed boolean values
-    finish() → BoolArray
-    """
-
-    var data: ArcPointer[BuilderData]
-
-    fn __init__(out self, capacity: Int = 0):
-        self.data = ArcPointer(
-            BuilderData(
-                dtype=materialize[bool_](),
-                length=0,
-                capacity=capacity,
-                bitmap=BufferBuilder.alloc[DType.bool](capacity),
-                buffers=[ArcPointer(BufferBuilder.alloc[DType.bool](capacity))],
-                children=List[ArcPointer[BuilderData]](),
-            )
-        )
-
-    fn __len__(self) -> Int:
-        return self.data[].length
-
-    fn grow(mut self, capacity: Int):
-        self.data[].bitmap.resize[DType.bool](capacity)
-        self.data[].buffers[0][].resize[DType.bool](capacity)
-        self.data[].capacity = capacity
-
-    @always_inline
-    fn append(mut self, value: Bool):
-        if self.data[].length >= self.data[].capacity:
-            self.grow(max(self.data[].capacity * 2, self.data[].length + 1))
-        self.data[].bitmap.unsafe_set[DType.bool](self.data[].length, True)
-        self.data[].buffers[0][].unsafe_set[DType.bool](self.data[].length, value)
-        self.data[].length += 1
-
-    @always_inline
-    fn append_null(mut self):
-        if self.data[].length >= self.data[].capacity:
-            self.grow(max(self.data[].capacity * 2, self.data[].length + 1))
-        self.data[].bitmap.unsafe_set[DType.bool](self.data[].length, False)
-        self.data[].length += 1
-
-    fn finish(mut self) raises -> BoolArray:
-        return self.data[].finish().as_bool()
 
 
 # ---------------------------------------------------------------------------
@@ -254,7 +199,7 @@ struct PrimitiveBuilder[T: DataType](Movable, Sized):
         self.data[].buffers[0][].resize[Self.T.native](capacity)
         self.data[].capacity = capacity
 
-    @always_inline
+    # @always_inline
     fn append(mut self, value: Self.scalar):
         if self.data[].length >= self.data[].capacity:
             self.grow(max(self.data[].capacity * 2, self.data[].length + 1))
@@ -263,6 +208,12 @@ struct PrimitiveBuilder[T: DataType](Movable, Sized):
             self.data[].length, value
         )
         self.data[].length += 1
+
+    fn append(mut self, value: Bool):
+        comptime assert (
+            Self.T == bool_
+        ), "append(Bool) only supported for PrimitiveBuilder[bool_]"
+        self.append(Self.scalar(value))
 
     @always_inline
     fn append_null(mut self):
@@ -277,6 +228,22 @@ struct PrimitiveBuilder[T: DataType](Movable, Sized):
             self.grow(max(self.data[].capacity * 2, new_len))
         for value in values:
             self.append(value)
+
+    fn extend(mut self, values: List[Self.scalar], valid: List[Bool]):
+        for i in range(len(values)):
+            if valid[i]:
+                self.append(values[i])
+            else:
+                self.append_null()
+
+    fn append_nulls(mut self, n: Int):
+        for _ in range(n):
+            self.append_null()
+
+    fn reserve(mut self, additional: Int):
+        var needed = self.data[].length + additional
+        if needed > self.data[].capacity:
+            self.grow(needed)
 
     fn finish(mut self) raises -> PrimitiveArray[Self.T]:
         return self.data[].finish().as_primitive[Self.T]()
@@ -350,6 +317,22 @@ struct StringBuilder(Movable, Sized):
             index + 1, last_offset
         )
 
+    fn extend(mut self, values: List[String], valid: List[Bool]):
+        for i in range(len(values)):
+            if valid[i]:
+                self.append(values[i])
+            else:
+                self.append_null()
+
+    fn append_nulls(mut self, n: Int):
+        for _ in range(n):
+            self.append_null()
+
+    fn reserve(mut self, additional: Int):
+        var needed = self.data[].length + additional
+        if needed > self.data[].capacity:
+            self.grow(needed)
+
     fn finish(mut self) raises -> StringArray:
         return self.data[].finish().as_string()
 
@@ -407,6 +390,15 @@ struct ListBuilder(Movable, Sized):
     fn append_null(mut self):
         self.append(False)
 
+    fn append_nulls(mut self, n: Int):
+        for _ in range(n):
+            self.append_null()
+
+    fn reserve(mut self, additional: Int):
+        var needed = self.data[].length + additional
+        if needed > self.data[].capacity:
+            self.grow(needed)
+
     fn finish(mut self) raises -> ListArray:
         return self.data[].finish().as_list()
 
@@ -457,6 +449,15 @@ struct FixedSizeListBuilder(Movable, Sized):
 
     fn append_null(mut self):
         self.append(False)
+
+    fn append_nulls(mut self, n: Int):
+        for _ in range(n):
+            self.append_null()
+
+    fn reserve(mut self, additional: Int):
+        var needed = self.data[].length + additional
+        if needed > self.data[].capacity:
+            self.grow(needed)
 
     fn finish(mut self) raises -> FixedSizeListArray:
         return self.data[].finish().as_fixed_size_list()
@@ -514,8 +515,34 @@ struct StructBuilder(Movable, Sized):
     fn append_null(mut self):
         self.append(False)
 
+    fn append_nulls(mut self, n: Int):
+        for _ in range(n):
+            self.append_null()
+
+    fn reserve(mut self, additional: Int):
+        var needed = self.data[].length + additional
+        if needed > self.data[].capacity:
+            self.grow(needed)
+
     fn finish(mut self) raises -> StructArray:
         return StructArray(data=self.data[].finish())
+
+
+# ---------------------------------------------------------------------------
+# Type aliases
+# ---------------------------------------------------------------------------
+
+comptime BoolBuilder = PrimitiveBuilder[bool_]
+comptime Int8Builder = PrimitiveBuilder[int8]
+comptime Int16Builder = PrimitiveBuilder[int16]
+comptime Int32Builder = PrimitiveBuilder[int32]
+comptime Int64Builder = PrimitiveBuilder[int64]
+comptime UInt8Builder = PrimitiveBuilder[uint8]
+comptime UInt16Builder = PrimitiveBuilder[uint16]
+comptime UInt32Builder = PrimitiveBuilder[uint32]
+comptime UInt64Builder = PrimitiveBuilder[uint64]
+comptime Float32Builder = PrimitiveBuilder[float32]
+comptime Float64Builder = PrimitiveBuilder[float64]
 
 
 # ---------------------------------------------------------------------------
@@ -545,7 +572,7 @@ fn array(values: List[Optional[Bool]]) raises -> BoolArray:
     var b = BoolBuilder(len(values))
     for value in values:
         if value:
-            b.append(value.value())
+            b.append(Scalar[bool_.native](value.value()))
         else:
             b.append_null()
     return b.finish()

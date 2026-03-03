@@ -116,7 +116,7 @@ def test_bitmap_get_set():
 
 def _reset(mut bitmap: BufferBuilder, n_bits: Int):
     bitmap_range_set(bitmap.ptr, 0, n_bits, False)
-    assert_bitmap.unsafe_set[DType.bool](n_bits, [], "after _reset")
+    assert_bitmap_set(bitmap.ptr, n_bits, [], "after _reset")
 
 
 def test_bitmap_range_set():
@@ -128,7 +128,7 @@ def test_bitmap_range_set():
         bitmap.ptr, n_bits, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "range 0-10"
     )
     bitmap_range_set(bitmap.ptr, 0, 10, False)
-    assert_bitmap.unsafe_set[DType.bool](n_bits, [], "reset")
+    assert_bitmap_set(bitmap.ptr, n_bits, [], "reset")
 
     bitmap_range_set(bitmap.ptr, 0, 0, True)
     assert_bitmap.unsafe_set[DType.bool](n_bits, [], "range 0")
@@ -155,7 +155,7 @@ def test_bitmap_extend():
     var dst = BufferBuilder.alloc[DType.bool](8)
     bitmap_range_set(dst.ptr, 0, 8, False)
     bitmap_extend(dst.ptr, src.finish().unsafe_ptr(), 0, 6)
-    assert_dst.unsafe_set[DType.bool](8, [0, 5], "after extend")
+    assert_bitmap_set(dst.ptr, 8, [0, 5], "after extend")
 
     # extend into offset position
     var dst2 = BufferBuilder.alloc[DType.bool](8)
@@ -163,7 +163,7 @@ def test_bitmap_extend():
     var src2 = BufferBuilder.alloc[DType.bool](2)
     src2.unsafe_set[DType.bool](0, True)
     bitmap_extend(dst2.ptr, src2.finish().unsafe_ptr(), 6, 2)
-    assert_dst2.unsafe_set[DType.bool](8, [6], "extend at offset 6")
+    assert_bitmap_set(dst2.ptr, 8, [6], "extend at offset 6")
 
 
 def test_buffer_finish():

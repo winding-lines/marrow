@@ -91,6 +91,7 @@ struct MemorySpace(
             writer.write("unknown")
 
 
+# TODO: should be removed since DType should provide a size_of method
 fn dynamic_size_of(dtype: DType) -> Int:
     """Get size of a dtype by dispatching to compile-time size_of."""
     if dtype == DType.bool:
@@ -189,10 +190,11 @@ struct BufferBuilder(Movable):
         For DType.bool, `length` is the number of bits; the buffer will hold
         ceildiv(length, 8) bytes, zero-padded to a 64-byte boundary.
         """
+        var byte_size: Int
         comptime if T == DType.bool:
-            var byte_size = math.align_up(math.ceildiv(Int(length), 8), 64)
+            byte_size = math.align_up(math.ceildiv(Int(length), 8), 64)
         else:
-            var byte_size = math.align_up(Int(length) * size_of[T](), 64)
+            byte_size = math.align_up(Int(length) * size_of[T](), 64)
         var ptr = alloc[UInt8](byte_size, alignment=64)
         memset_zero(ptr, byte_size)
         return BufferBuilder(ptr, byte_size)
@@ -246,15 +248,17 @@ struct BufferBuilder(Movable):
 
     @always_inline
     fn unsafe_get[T: DType = DType.uint8](self, index: Int) -> Scalar[T]:
+        comptime output = Scalar[T]
         comptime if T == DType.bool:
             var byte = self.ptr[index // 8]
-            return Scalar[DType.bool]((byte >> UInt8(index % 8)) & 1)
+            return output((byte >> UInt8(index % 8)) & 1)
         else:
-            comptime output = Scalar[T]
             return self.ptr.bitcast[output]()[index]
 
     @always_inline
-    fn unsafe_set[T: DType = DType.uint8](mut self, index: Int, value: Scalar[T]):
+    fn unsafe_set[
+        T: DType = DType.uint8
+    ](mut self, index: Int, value: Scalar[T]):
         comptime if T == DType.bool:
             var byte_index = index // 8
             var bit_mask = UInt8(1 << (index % 8))
@@ -425,11 +429,11 @@ struct Buffer(ImplicitlyCopyable, Movable):
             self.space != MemorySpace.DEVICE,
             "cannot read device buffer, call to_host() first",
         )
+        comptime output = Scalar[T]
         comptime if T == DType.bool:
             var byte = self.ptr[index // 8]
-            return Scalar[DType.bool]((byte >> UInt8(index % 8)) & 1)
+            return output((byte >> UInt8(index % 8)) & 1)
         else:
-            comptime output = Scalar[T]
             return self.ptr.bitcast[output]()[index]
 
     @always_inline
@@ -445,7 +449,6 @@ struct Buffer(ImplicitlyCopyable, Movable):
 # ---------------------------------------------------------------------------
 # Bitmap free functions — operate on raw UnsafePointer[UInt8]
 # ---------------------------------------------------------------------------
-
 
 
 # TODO: remove it

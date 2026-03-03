@@ -48,8 +48,8 @@ def test_bool_builder_append_null():
     assert_true(frozen.is_valid(0))
     assert_false(frozen.is_valid(1))
     assert_true(frozen.is_valid(2))
-    assert_equal(frozen.unsafe_get(0), True)
-    assert_equal(frozen.unsafe_get(2), False)
+    assert_true(frozen.unsafe_get(0))
+    assert_false(frozen.unsafe_get(2))
 
 
 def test_bool_builder_null_count():
@@ -84,7 +84,7 @@ def test_bool_builder_all_false():
     assert_equal(frozen.null_count(), 0)
     for i in range(3):
         assert_true(frozen.is_valid(i))
-        assert_equal(frozen.unsafe_get(i), False)
+        assert_false(frozen.unsafe_get(i))
 
 
 def test_bool_builder_as_builder():
@@ -662,9 +662,9 @@ def test_factory_array_bool_with_nulls():
     assert_true(a.is_valid(2))
     assert_false(a.is_valid(3))
     assert_true(a.is_valid(4))
-    assert_equal(a.unsafe_get(0), True)
-    assert_equal(a.unsafe_get(2), False)
-    assert_equal(a.unsafe_get(4), True)
+    assert_true(a.unsafe_get(0))
+    assert_false(a.unsafe_get(2))
+    assert_true(a.unsafe_get(4))
 
 
 def test_factory_array_bool_all_nulls():

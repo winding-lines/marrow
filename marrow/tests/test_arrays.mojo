@@ -233,9 +233,9 @@ def test_array_from_ints():
 
     var b = array([True, False, True])
     assert_equal(len(b), 3)
-    assert_equal(b.unsafe_get(0), True)
-    assert_equal(b.unsafe_get(1), False)
-    assert_equal(b.unsafe_get(2), True)
+    assert_true(b.unsafe_get(0))
+    assert_false(b.unsafe_get(1))
+    assert_true(b.unsafe_get(2))
 
 
 def test_array_with_nulls():
@@ -404,9 +404,9 @@ def test_list_bool_array():
     assert_equal(len(lists), 1)
     var first_value = lists.unsafe_get(0)
     var bool_array = BoolArray(first_value)
-    assert_equal(bool_array.unsafe_get(0), True)
-    assert_equal(bool_array.unsafe_get(1), False)
-    assert_equal(bool_array.unsafe_get(2), True)
+    assert_true(bool_array.unsafe_get(0))
+    assert_false(bool_array.unsafe_get(1))
+    assert_true(bool_array.unsafe_get(2))
 
 
 def test_list_str():
