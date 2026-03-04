@@ -507,9 +507,8 @@ def test_struct_builder_append_valid():
     assert_equal(len(frozen.dtype.fields), 2)
     assert_equal(frozen.dtype.fields[0].name, "id")
     assert_equal(frozen.dtype.fields[1].name, "score")
-    # All entries valid
-    for i in range(3):
-        assert_true(frozen.bitmap.unsafe_get[DType.bool](i))
+    # All entries valid — bitmap is omitted when null_count == 0
+    assert_equal(frozen.nulls, 0)
 
 
 def test_struct_builder_append_null():
@@ -739,6 +738,122 @@ def test_factory_arange_single():
 def test_factory_arange_empty():
     var a = arange[int32](3, 3)
     assert_equal(len(a), 0)
+
+
+# ---------------------------------------------------------------------------
+# shrink_to_fit / finish buffer sizing
+# ---------------------------------------------------------------------------
+# Buffer sizes are always 64-byte aligned. With a large initial capacity the
+# data buffer is much bigger than needed; finish() must shrink it down to the
+# 64-aligned size for exactly `length` elements.
+#
+# Sentinel sizes used below (capacity=128):
+#   int32 data:  128 * 4  = 512 bytes before shrink → 64 bytes after (2 elems)
+#   uint32 offs: 129 * 4  = 516 bytes before shrink → 64 bytes after (3 offs)
+
+
+def test_primitive_builder_finish_shrinks_data_buffer():
+    """finish() shrinks the data buffer to fit the actual element count."""
+    var b = PrimitiveBuilder[int32](128)
+    b.append(1)
+    b.append(2)
+    # capacity allocated 512 bytes; only 2 elements written
+    var frozen = b.finish()
+    assert_equal(frozen.length, 2)
+    # 2 int32s = 8 bytes → 64-byte aligned = 64 bytes
+    assert_equal(frozen.buffer.size, 64)
+
+
+def test_string_builder_finish_shrinks_offsets_buffer():
+    """finish() shrinks the offsets buffer to (length+1) uint32 entries."""
+    var b = StringBuilder(128)
+    b.append("hello")
+    b.append("world")
+    # capacity allocated 129 * 4 = 516 bytes for offsets; only 3 needed
+    var frozen = b.finish()
+    assert_equal(frozen.length, 2)
+    # 3 uint32 offsets = 12 bytes → 64-byte aligned = 64 bytes
+    assert_equal(frozen.offsets.size, 64)
+
+
+def test_list_builder_finish_shrinks_offsets_buffer():
+    """finish() shrinks the offsets buffer to (length+1) uint32 entries."""
+    var child = PrimitiveBuilder[int32]()
+    child.append(10)
+    child.append(20)
+    child.append(30)
+    var b = ListBuilder(child^, 128)
+    b.append(True)   # list [10, 20]
+    b.append(True)   # list [30]
+    # capacity allocated 129 * 4 = 516 bytes for offsets; only 3 needed
+    var frozen = b.finish()
+    assert_equal(frozen.length, 2)
+    # 3 uint32 offsets = 12 bytes → 64-byte aligned = 64 bytes
+    assert_equal(frozen.offsets.size, 64)
+
+
+def test_primitive_builder_finish_no_nulls_drops_bitmap():
+    """finish() with null_count==0 produces a zero-size bitmap (Arrow spec)."""
+    var b = PrimitiveBuilder[int64](128)
+    b.append(1)
+    b.append(2)
+    b.append(3)
+    var frozen = b.finish()
+    assert_equal(frozen.nulls, 0)
+    assert_equal(frozen.bitmap.size, 0)
+
+
+def test_primitive_builder_finish_with_nulls_shrinks_bitmap():
+    """finish() with nulls resizes the bitmap to fit exactly `length` bits."""
+    var b = PrimitiveBuilder[int32](128)
+    b.append(1)
+    b.append_null()
+    b.append(3)
+    var frozen = b.finish()
+    assert_equal(frozen.nulls, 1)
+    # 3 bits → 1 byte → 64-byte aligned = 64 bytes
+    assert_equal(frozen.bitmap.size, 64)
+
+
+def test_builder_finish_dispatch_primitive():
+    """Builder.finish() dispatches to PrimitiveBuilder.finish() and returns Array."""
+    var b = PrimitiveBuilder[int32](10)
+    b.append(42)
+    b.append(99)
+    var builder: Builder = b^
+    var arr = builder.finish()
+    assert_equal(arr.length, 2)
+    assert_equal(arr.as_int32().unsafe_get(0), 42)
+    assert_equal(arr.as_int32().unsafe_get(1), 99)
+    # data buffer is shrunk: 2 int32s = 8 bytes → 64 bytes
+    assert_equal(arr.buffers[0].size, 64)
+
+
+def test_builder_finish_dispatch_string():
+    """Builder.finish() dispatches to StringBuilder.finish() and returns Array."""
+    var b = StringBuilder(10)
+    b.append("foo")
+    b.append("bar")
+    var builder: Builder = b^
+    var arr = builder.finish()
+    assert_equal(arr.length, 2)
+    # offsets buffer shrunk: 3 uint32s = 12 bytes → 64 bytes
+    assert_equal(arr.buffers[0].size, 64)
+
+
+def test_builder_finish_dispatch_list():
+    """Builder.finish() dispatches to ListBuilder.finish() and returns Array."""
+    var child = PrimitiveBuilder[int32]()
+    child.append(1)
+    child.append(2)
+    var b = ListBuilder(child^, 10)
+    b.append(True)
+    b.append(True)
+    var builder: Builder = b^
+    var arr = builder.finish()
+    assert_equal(arr.length, 2)
+    # offsets buffer shrunk: 3 uint32s = 12 bytes → 64 bytes
+    assert_equal(arr.buffers[0].size, 64)
 
 
 def main():

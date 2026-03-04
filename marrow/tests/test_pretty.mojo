@@ -210,6 +210,7 @@ def test_format_empty_array():
 def test_format_all_nulls():
     var b = PrimitiveBuilder[int32](3)
     b.data[].length = 3
+    b.data[].null_count = 3
     bitmap_range_set(b.data[].bitmap.ptr, 0, 3, False)
     assert_equal(
         _fmt(Array(b.finish())),
@@ -222,6 +223,7 @@ def test_format_mixed_nulls():
     b.append(1)
     b.append(2)
     b.data[].bitmap.unsafe_set[DType.bool](2, False)
+    b.data[].null_count = 1
     b.data[].length = 3
     b.append(4)
     assert_equal(

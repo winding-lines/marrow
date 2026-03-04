@@ -22,7 +22,7 @@ from .buffers import (
     Buffer,
     BufferBuilder,
     bitmap_extend,
-    bitmap_count_ones,
+    bitmap_range_set,
 )
 from .dtypes import *
 
@@ -115,6 +115,8 @@ struct Array(Copyable, Movable, Stringable):
         self.offset = take.offset
 
     fn is_valid(self, index: Int) -> Bool:
+        if self.bitmap.size == 0:
+            return True
         return self.bitmap.unsafe_get[DType.bool](index + self.offset)
 
     fn __str__(self) -> String:
@@ -214,6 +216,8 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
 
     @always_inline
     fn is_valid(self, index: Int) -> Bool:
+        if self.bitmap.size == 0:
+            return True
         return self.bitmap.unsafe_get[DType.bool](index + self.offset)
 
     @always_inline
@@ -306,6 +310,8 @@ struct StringArray(Movable, Sized):
 
     fn is_valid(self, index: Int) -> Bool:
         """Return True if the element at the given index is not null."""
+        if self.bitmap.size == 0:
+            return True
         return self.bitmap.unsafe_get[DType.bool](index + self.offset)
 
     fn unsafe_get[
@@ -377,6 +383,8 @@ struct ListArray(Movable, Sized):
         return self.length
 
     fn is_valid(self, index: Int) -> Bool:
+        if self.bitmap.size == 0:
+            return True
         return self.bitmap.unsafe_get[DType.bool](index + self.offset)
 
     fn unsafe_get(self, index: Int, out array_data: Array) raises:
@@ -436,6 +444,8 @@ struct FixedSizeListArray(Movable, Sized):
         return self.length
 
     fn is_valid(self, index: Int) -> Bool:
+        if self.bitmap.size == 0:
+            return True
         return self.bitmap.unsafe_get[DType.bool](index + self.offset)
 
     fn unsafe_get(self, index: Int, out array_data: Array) raises:
@@ -560,23 +570,31 @@ struct ChunkedArray(Stringable):
         var buffers = List[Buffer]()
         var children = List[Array]()
         var start = 0
+        var total_nulls = 0
         while self.chunks:
             var chunk = self.chunks.pop(0)
             var chunk_length = chunk.length
-            bitmap_extend(
-                bitmap.ptr, chunk.bitmap.unsafe_ptr(), start, chunk_length
-            )
+            if chunk.nulls == 0:
+                bitmap_range_set(bitmap.ptr, start, start + chunk_length, True)
+            else:
+                total_nulls += chunk.nulls
+                bitmap_extend(
+                    bitmap.ptr, chunk.bitmap.unsafe_ptr(), start, chunk_length
+                )
             for i in range(len(chunk.buffers)):
                 buffers.append(chunk.buffers[i])
             for i in range(len(chunk.children)):
                 children.append(chunk.children[i].copy())
             start += chunk_length
-        var frozen_bitmap = bitmap.finish()
-        var nulls = self.length - bitmap_count_ones(frozen_bitmap, frozen_bitmap.size)
+        var frozen_bitmap: Buffer
+        if total_nulls == 0:
+            frozen_bitmap = BufferBuilder.alloc[DType.bool](0).finish()
+        else:
+            frozen_bitmap = bitmap.finish()
         combined = Array(
             dtype=self.dtype.copy(),
             length=self.length,
-            nulls=nulls,
+            nulls=total_nulls,
             bitmap=frozen_bitmap^,
             buffers=buffers^,
             children=children^,
