@@ -554,7 +554,7 @@ struct FixedSizeListBuilder(Movable, Sized):
     fn __len__(self) -> Int:
         return self.data[].length
 
-    fn child(self) -> Builder:
+    fn values(self) -> Builder:
         return Builder(self.data[].children[0])
 
     fn grow(mut self, capacity: Int) raises:
@@ -589,7 +589,7 @@ struct FixedSizeListBuilder(Movable, Sized):
         self.shrink_to_fit()
 
         var bitmap = self.data[].bitmap.finish()
-        var child = self.child()
+        var child = self.values()
         var values = child.finish()
         var result = FixedSizeListArray(
             dtype=self.data[].dtype,

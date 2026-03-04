@@ -345,7 +345,7 @@ def test_list_builder_child_accessor():
     var child = PrimitiveBuilder[int32](4)
     child.append(10)
     var b = ListBuilder(child^)
-    var child_arc = b.child()
+    var child_arc = b.values()
     assert_equal(child_arc.data[].length, 1)
 
 
@@ -443,7 +443,7 @@ def test_fixed_size_list_builder_child_accessor():
     child.append(100)
     child.append(200)
     var b = FixedSizeListBuilder(child, list_size=2)
-    var child_arc = b.child()
+    var child_arc = b.values()
     assert_equal(child_arc.data[].length, 2)
 
 
@@ -753,7 +753,7 @@ def test_factory_arange_empty():
 
 
 def test_primitive_builder_finish_shrinks_data_buffer():
-    """finish() shrinks the data buffer to fit the actual element count."""
+    """Finish() shrinks the data buffer to fit the actual element count."""
     var b = PrimitiveBuilder[int32](128)
     b.append(1)
     b.append(2)
@@ -765,7 +765,7 @@ def test_primitive_builder_finish_shrinks_data_buffer():
 
 
 def test_string_builder_finish_shrinks_offsets_buffer():
-    """finish() shrinks the offsets buffer to (length+1) uint32 entries."""
+    """Finish() shrinks the offsets buffer to (length+1) uint32 entries."""
     var b = StringBuilder(128)
     b.append("hello")
     b.append("world")
@@ -777,7 +777,7 @@ def test_string_builder_finish_shrinks_offsets_buffer():
 
 
 def test_list_builder_finish_shrinks_offsets_buffer():
-    """finish() shrinks the offsets buffer to (length+1) uint32 entries."""
+    """Finish() shrinks the offsets buffer to (length+1) uint32 entries."""
     var child = PrimitiveBuilder[int32]()
     child.append(10)
     child.append(20)
@@ -793,7 +793,7 @@ def test_list_builder_finish_shrinks_offsets_buffer():
 
 
 def test_primitive_builder_finish_no_nulls_drops_bitmap():
-    """finish() with null_count==0 produces a zero-size bitmap (Arrow spec)."""
+    """Finish() with null_count==0 produces a zero-size bitmap (Arrow spec)."""
     var b = PrimitiveBuilder[int64](128)
     b.append(1)
     b.append(2)
@@ -804,7 +804,7 @@ def test_primitive_builder_finish_no_nulls_drops_bitmap():
 
 
 def test_primitive_builder_finish_with_nulls_shrinks_bitmap():
-    """finish() with nulls resizes the bitmap to fit exactly `length` bits."""
+    """Finish() with nulls resizes the bitmap to fit exactly `length` bits."""
     var b = PrimitiveBuilder[int32](128)
     b.append(1)
     b.append_null()

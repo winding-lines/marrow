@@ -19,7 +19,7 @@ fn empty_release_schema(ptr: UnsafePointer[CArrowSchema, MutAnyOrigin]):
 
 
 @fieldwise_init
-struct CArrowSchema(Copyable, Writable):
+struct CArrowSchema(Copyable):
     var format: UnsafePointer[c_char, MutAnyOrigin]
     var name: UnsafePointer[c_char, MutAnyOrigin]
     var metadata: UnsafePointer[c_char, MutAnyOrigin]
@@ -237,11 +237,11 @@ struct CArrowArray(Movable):
         return ptr.take_pointee()
 
     fn _to_array(
-        self, dtype: DataType, keeper: ArcPointer[Allocation]
+        self, dtype: DataType, owner: ArcPointer[Allocation]
     ) raises -> Array:
-        """Build an Array from this CArrowArray, all buffers sharing one keeper.
+        """Build an Array from this CArrowArray, all buffers sharing one owner.
 
-        All Buffer views hold a copy of `keeper` (an ArcPointer, so
+        All Buffer views hold a copy of `owner` (an ArcPointer, so
         copying just bumps the ref-count).  The C release callback fires
         automatically once the last buffer is dropped.
         """
@@ -254,7 +254,7 @@ struct CArrowArray(Movable):
             bitmap = Buffer.from_foreign(
                 self.buffers[0],
                 math.ceildiv(Int(length), 8),
-                keeper,
+                owner,
             )
         else:
             # bitmaps are allowed to be nullptrs by the specification; in this
@@ -282,7 +282,7 @@ struct CArrowArray(Movable):
             var values = Buffer.from_foreign(
                 self.buffers[1],
                 math.ceildiv(Int(length), 8),
-                keeper,
+                owner,
             )
             buffers.append(values^)
         elif dtype.is_primitive():
@@ -299,7 +299,7 @@ struct CArrowArray(Movable):
                     )
                 )
             var values = Buffer.from_foreign(
-                self.buffers[1], Int(length) * dtype.byte_width(), keeper
+                self.buffers[1], Int(length) * dtype.byte_width(), owner
             )
             buffers.append(values^)
         elif dtype.is_list():
@@ -316,14 +316,13 @@ struct CArrowArray(Movable):
                     )
                 )
             # list has only an offsets buffer; child data lives in self.children
-            var offsets = Buffer.from_foreign(
-                self.buffers[1], (length + 1) * size_of[DType.int32](), keeper
-            )
+            var size = (length + 1) * Int64(size_of[DType.int32]())
+            var offsets = Buffer.from_foreign(self.buffers[1], size, owner)
             buffers.append(offsets^)
             # add the single values child array
             var values_field = dtype.fields[0].copy()
             var values_array = self.children[0][]._to_array(
-                values_field.dtype, keeper
+                values_field.dtype, owner
             )
             children.append(values_array^)
         elif dtype.is_string():
@@ -339,11 +338,10 @@ struct CArrowArray(Movable):
                         self.n_children
                     )
                 )
-            var offsets = Buffer.from_foreign(
-                self.buffers[1], (length + 1) * size_of[DType.int32](), keeper
-            )
+            var size = (length + 1) * Int64(size_of[DType.int32]())
+            var offsets = Buffer.from_foreign(self.buffers[1], size, owner)
             var data_len = offsets.unsafe_get[DType.int32](Int(length))
-            var values = Buffer.from_foreign(self.buffers[2], data_len, keeper)
+            var values = Buffer.from_foreign(self.buffers[2], data_len, owner)
             buffers.append(offsets^)
             buffers.append(values^)
         elif dtype.is_fixed_size_list():
@@ -361,7 +359,7 @@ struct CArrowArray(Movable):
                 )
             var values_field = dtype.fields[0].copy()
             var values_array = self.children[0][]._to_array(
-                values_field.dtype, keeper
+                values_field.dtype, owner
             )
             children.append(values_array^)
         elif dtype.is_struct():
@@ -380,7 +378,7 @@ struct CArrowArray(Movable):
             for i in range(self.n_children):
                 var child_field = dtype.fields[i].copy()
                 var child_array = self.children[i][]._to_array(
-                    child_field.dtype, keeper
+                    child_field.dtype, owner
                 )
                 children.append(child_array^)
         else:
@@ -399,7 +397,7 @@ struct CArrowArray(Movable):
     fn _to_device_array(
         self,
         dtype: DataType,
-        keeper: ArcPointer[Allocation],
+        owner: ArcPointer[Allocation],
         device_type: Int32,
         device_id: Int64,
     ) raises -> Array:
@@ -427,10 +425,10 @@ struct CArrowArray(Movable):
         """
         var heap_c = alloc[CArrowArray](1)
         heap_c.init_pointee_move(self^)
-        var keeper = ArcPointer(
+        var owner = ArcPointer(
             Allocation.foreign(heap_c.bitcast[UInt8](), _release_c_array)
         )
-        return heap_c[]._to_array(dtype, keeper)
+        return heap_c[]._to_array(dtype, owner)
 
 
 # ---------------------------------------------------------------------------
@@ -494,7 +492,7 @@ struct CArrowDeviceArray(Movable):
 
         The CArrowDeviceArray is moved onto the heap and wrapped in an
         `Allocation`.  All Buffer views share the same `ArcPointer[Allocation]`
-        keeper so the C release callback fires when the last buffer is dropped.
+        owner so the C release callback fires when the last buffer is dropped.
 
         If `sync_event` is non-null, `ctx.synchronize()` is called first to
         ensure all preceding device operations are complete before the buffers
@@ -513,7 +511,7 @@ struct CArrowDeviceArray(Movable):
 
         var heap_c = alloc[CArrowDeviceArray](1)
         heap_c.init_pointee_move(self^)
-        var keeper = ArcPointer(
+        var owner = ArcPointer(
             Allocation.foreign(heap_c.bitcast[UInt8](), _release_c_device_array)
         )
 
@@ -522,12 +520,12 @@ struct CArrowDeviceArray(Movable):
 
         # For CPU device type, delegate to the existing CArrowArray import path.
         if device_type == DeviceType.CPU:
-            return heap_c[].array._to_array(dtype, keeper)
+            return heap_c[].array._to_array(dtype, owner)
 
         # For device memory, wrap each buffer pointer as a DEVICE buffer.
         # The raw pointers in array.buffers point to device-resident memory.
         return heap_c[].array._to_device_array(
-            dtype, keeper, device_type, device_id
+            dtype, owner, device_type, device_id
         )
 
 

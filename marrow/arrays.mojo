@@ -406,26 +406,15 @@ struct ListArray(Movable, Sized, Writable):
             return True
         return self.bitmap.unsafe_get[DType.bool](index + self.offset)
 
-    # fn unsafe_get(self, index: Int, out array_data: Array) raises:
-    #     """Access the value at a given index in the list array.
-
-    #     Use an out argument to allow the caller to re-use memory while iterating over a pyarrow structure.
-    #     """
-    #     var start = Int(
-    #         self.offsets.unsafe_get[DType.int32](self.offset + index)
-    #     )
-    #     var end = Int(
-    #         self.offsets.unsafe_get[DType.int32](self.offset + index + 1)
-    #     )
-    #     return Array(
-    #         dtype=self.values.dtype,
-    #         length=end - start,
-    #         nulls=-1,
-    #         bitmap=self.values.bitmap,
-    #         buffers=self.values.buffers.copy(),
-    #         children=self.values.children.copy(),
-    #         offset=start,
-    #     )
+    fn unsafe_get(self, index: Int) -> Array:
+        """Return a view of the child array for the list at the given index."""
+        var start = Int(self.offsets.unsafe_get[DType.int32](self.offset + index))
+        var end = Int(self.offsets.unsafe_get[DType.int32](self.offset + index + 1))
+        var result = Array(copy=self.values)
+        result.offset = start
+        result.length = end - start
+        result.nulls = -1
+        return result^
 
 
 @fieldwise_init

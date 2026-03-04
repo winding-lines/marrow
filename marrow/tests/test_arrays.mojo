@@ -383,11 +383,11 @@ def test_list_bool_array():
     assert_equal(len(lists), 1)
 
     # TODO: fix listarray.unsafe_get
-    # var first_value = lists.unsafe_get(0)
-    # var bool_array = BoolArray(first_value)
-    # assert_true(bool_array.unsafe_get(0))
-    # assert_false(bool_array.unsafe_get(1))
-    # assert_true(bool_array.unsafe_get(2))
+    var first_value = lists.unsafe_get(0)
+    var bool_array = first_value.as_bool()
+    assert_true(bool_array.unsafe_get(0))
+    assert_false(bool_array.unsafe_get(1))
+    assert_true(bool_array.unsafe_get(2))
 
 
 def test_list_str():
@@ -399,10 +399,9 @@ def test_list_str():
     var lists = list_b.finish()
     assert_equal(len(lists), 1)
 
-    # TODO: fix listarray.unsafe_get
-    # var first_value = StringArray(lists.unsafe_get(0))
-    # assert_equal(String(first_value.unsafe_get(0)), "hello")
-    # assert_equal(String(first_value.unsafe_get(1)), "world")
+    var first_value = StringArray(lists.unsafe_get(0))
+    assert_equal(String(first_value.unsafe_get(0)), "hello")
+    assert_equal(String(first_value.unsafe_get(1)), "world")
 
 
 def test_list_of_list():
@@ -430,15 +429,15 @@ def test_list_of_list():
     top_b.append(True)
     list2 = top_b.finish()
 
-    # top = ListArray(list2.unsafe_get(0))
-    # middle_0 = top.unsafe_get(0)
-    # bottom = PrimitiveArray[int64](middle_0^)
-    # assert_equal(bottom.unsafe_get(1), 2)
-    # assert_equal(bottom.unsafe_get(0), 1)
-    # middle_1 = top.unsafe_get(1)
-    # bottom = PrimitiveArray[int64](middle_1^)
-    # assert_equal(bottom.unsafe_get(0), 3)
-    # assert_equal(bottom.unsafe_get(1), 4)
+    top = ListArray(list2.unsafe_get(0))
+    middle_0 = top.unsafe_get(0)
+    bottom = PrimitiveArray[int64](middle_0^)
+    assert_equal(bottom.unsafe_get(1), 2)
+    assert_equal(bottom.unsafe_get(0), 1)
+    middle_1 = top.unsafe_get(1)
+    bottom = PrimitiveArray[int64](middle_1^)
+    assert_equal(bottom.unsafe_get(0), 3)
+    assert_equal(bottom.unsafe_get(1), 4)
 
 
 def test_fixed_size_list_int_array():
@@ -461,18 +460,18 @@ def test_fixed_size_list_int_array():
     assert_equal(len(fsl), 2)
     assert_equal(fsl.dtype.size, 3)
 
-    # # First list: [1, 2, 3]
-    # var first = fsl.unsafe_get(0).as_int64()
-    # assert_equal(len(first), 3)
-    # assert_equal(first.unsafe_get(0), 1)
-    # assert_equal(first.unsafe_get(1), 2)
-    # assert_equal(first.unsafe_get(2), 3)
+    # First list: [1, 2, 3]
+    var first = fsl.unsafe_get(0).as_int64()
+    assert_equal(len(first), 3)
+    assert_equal(first.unsafe_get(0), 1)
+    assert_equal(first.unsafe_get(1), 2)
+    assert_equal(first.unsafe_get(2), 3)
 
-    # # Second list: [4, 5, 6]
-    # var second = fsl.unsafe_get(1).as_int64()
-    # assert_equal(second.unsafe_get(0), 4)
-    # assert_equal(second.unsafe_get(1), 5)
-    # assert_equal(second.unsafe_get(2), 6)
+    # Second list: [4, 5, 6]
+    var second = fsl.unsafe_get(1).as_int64()
+    assert_equal(second.unsafe_get(0), 4)
+    assert_equal(second.unsafe_get(1), 5)
+    assert_equal(second.unsafe_get(2), 6)
 
 
 def test_fixed_size_list_roundtrip():
@@ -491,9 +490,9 @@ def test_fixed_size_list_roundtrip():
     assert_equal(fsl.dtype.size, 2)
     assert_equal(len(fsl), 2)
 
-    # var first = fsl.unsafe_get(0).as_int32()
-    # assert_equal(first.unsafe_get(0), 10)
-    # assert_equal(first.unsafe_get(1), 20)
+    var first = fsl.unsafe_get(0).as_int32()
+    assert_equal(first.unsafe_get(0), 10)
+    assert_equal(first.unsafe_get(1), 20)
 
 
 def test_fixed_size_list_with_nulls():
@@ -552,70 +551,70 @@ def test_struct_array():
     assert_equal(data.dtype.fields[2].name, "active")
 
 
-# # def test_struct_array_unsafe_get():
-# #     var a_b = PrimitiveBuilder[int32](5)
-# #     a_b.append(1)
-# #     a_b.append(2)
-# #     a_b.append(3)
-# #     a_b.append(4)
-# #     a_b.append(5)
-# #     var b_b = PrimitiveBuilder[int32](3)
-# #     b_b.append(10)
-# #     b_b.append(20)
-# #     b_b.append(30)
-# #     var fields = List[Field]()
-# #     fields.append(Field("int_data_a", materialize[int32]()))
-# #     fields.append(Field("int_data_b", materialize[int32]()))
-# #     var children = List[Builder]()
-# #     children.append(a_b)
-# #     children.append(b_b)
-# #     var sb = StructBuilder(fields^, children^, capacity=2)
-# #     sb.append(True)
-# #     sb.append(True)
-# #     var struct_array = sb.finish()
-# #     ref int_data_a = struct_array.unsafe_get("int_data_a")
-# #     var int_a = PrimitiveArray[int32](int_data_a.copy())
-# #     assert_equal(int_a.unsafe_get(0), 1)
-# #     assert_equal(int_a.unsafe_get(4), 5)
-# #     ref int_data_b = struct_array.unsafe_get("int_data_b")
-# #     var int_b = PrimitiveArray[int32](int_data_b.copy())
-# #     assert_equal(int_b.unsafe_get(0), 10)
-# #     assert_equal(int_b.unsafe_get(2), 30)
+def test_struct_array_unsafe_get():
+    var a_b = PrimitiveBuilder[int32](5)
+    a_b.append(1)
+    a_b.append(2)
+    a_b.append(3)
+    a_b.append(4)
+    a_b.append(5)
+    var b_b = PrimitiveBuilder[int32](3)
+    b_b.append(10)
+    b_b.append(20)
+    b_b.append(30)
+    var fields = List[Field]()
+    fields.append(Field("int_data_a", materialize[int32]()))
+    fields.append(Field("int_data_b", materialize[int32]()))
+    var children = List[Builder]()
+    children.append(a_b)
+    children.append(b_b)
+    var sb = StructBuilder(fields^, children^, capacity=2)
+    sb.append(True)
+    sb.append(True)
+    var struct_array = sb.finish()
+    ref int_data_a = struct_array.unsafe_get("int_data_a")
+    var int_a = PrimitiveArray[int32](int_data_a.copy())
+    assert_equal(int_a.unsafe_get(0), 1)
+    assert_equal(int_a.unsafe_get(4), 5)
+    ref int_data_b = struct_array.unsafe_get("int_data_b")
+    var int_b = PrimitiveArray[int32](int_data_b.copy())
+    assert_equal(int_b.unsafe_get(0), 10)
+    assert_equal(int_b.unsafe_get(2), 30)
 
 
 # # # --- ChunkedArray tests ---
 
 
-# # def test_chunked_array():
-# #     var arrays = List[Array]()
-# #     arrays.append(array[uint8]([0]))
-# #     arrays.append(array[uint8]([0, 1]))
+def test_chunked_array():
+    var arrays = List[Array]()
+    arrays.append(array[uint8]([0]))
+    arrays.append(array[uint8]([0, 1]))
 
-# #     var chunked_array = ChunkedArray(materialize[int8](), arrays^)
-# #     assert_equal(chunked_array.length, 3)
+    var chunked_array = ChunkedArray(materialize[int8](), arrays^)
+    assert_equal(chunked_array.length, 3)
 
-# #     assert_equal(chunked_array.chunk(0).length, 1)
-# #     var second_chunk = chunked_array.chunk(1).copy().as_uint8()
-# #     assert_equal(second_chunk.length, 2)
-# #     assert_equal(second_chunk.unsafe_get(0), 0)
-# #     assert_equal(second_chunk.unsafe_get(1), 1)
+    assert_equal(chunked_array.chunk(0).length, 1)
+    var second_chunk = chunked_array.chunk(1).copy().as_uint8()
+    assert_equal(second_chunk.length, 2)
+    assert_equal(second_chunk.unsafe_get(0), 0)
+    assert_equal(second_chunk.unsafe_get(1), 1)
 
 
-# # def test_combine_chunked_array():
-# #     var arrays = List[Array]()
-# #     arrays.append(array[uint8]([0]))
-# #     arrays.append(array[uint8]([0, 1]))
+def test_combine_chunked_array():
+    var arrays = List[Array]()
+    arrays.append(array[uint8]([0]))
+    arrays.append(array[uint8]([0, 1]))
 
-# #     var chunked_array = ChunkedArray(materialize[int8](), arrays^)
-# #     assert_equal(chunked_array.length, 3)
-# #     assert_equal(len(chunked_array.chunks), 2)
-# #     assert_equal(chunked_array.chunk(1).copy().as_uint8().unsafe_get(1), 1)
+    var chunked_array = ChunkedArray(materialize[int8](), arrays^)
+    assert_equal(chunked_array.length, 3)
+    assert_equal(len(chunked_array.chunks), 2)
+    assert_equal(chunked_array.chunk(1).copy().as_uint8().unsafe_get(1), 1)
 
-# #     var combined_array = chunked_array^.combine_chunks()
-# #     assert_equal(combined_array.length, 3)
-# #     assert_equal(combined_array.dtype, materialize[int8]())
-# #     # Ensure that the last element of the last buffer has the expected value.
-# #     assert_equal(combined_array.buffers[1].unsafe_get(1), 1)
+    var combined_array = chunked_array^.combine_chunks()
+    assert_equal(combined_array.length, 3)
+    assert_equal(combined_array.dtype, materialize[int8]())
+    # Ensure that the last element of the last buffer has the expected value.
+    assert_equal(combined_array.buffers[1].unsafe_get(1), 1)
 
 
 
