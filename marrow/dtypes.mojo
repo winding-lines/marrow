@@ -169,7 +169,7 @@ struct Field(Copyable, Equatable, Representable, Stringable):
         return self.__str__()
 
 
-struct DataType(Copyable, Equatable, Representable, Stringable):
+struct DataType(Copyable, Equatable, Representable, Stringable, Writable):
     var code: UInt8
     var native: DType
     var fields: List[Field]
@@ -269,6 +269,9 @@ struct DataType(Copyable, Equatable, Representable, Stringable):
 
     fn __repr__(self) -> String:
         return self.__str__()
+
+    fn write_to[W: Writer](self, mut writer: W):
+        writer.write(self.__str__())
 
     @always_inline
     fn is_bool(self) -> Bool:
