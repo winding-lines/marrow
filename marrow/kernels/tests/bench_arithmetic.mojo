@@ -1,129 +1,140 @@
 """Benchmarks for arithmetic kernel variants.
 
-Compares:
-  - simd: SIMD-vectorized add via binary_simd helper
-  - dispatch: Public add() with runtime dispatch (no nulls)
-  - nulls: Public add() where inputs have 10% nulls
+CPU section (Bench framework):
+  - add:   add() with no nulls (CPU SIMD path)
+  - nulls: add() where inputs have 10% nulls
+  Across sizes 1k–1M, dtypes int32 and float64.
 
-Across array sizes (1k-1M) and dtypes (int32, float64).
+GPU section (manual timing, skipped when no GPU present):
+  - gpu: GPU add with data pre-loaded on device (mean us/call)
+  Across sizes 1k–10M, dtypes int32 and float32.
+  Uses manual perf_counter_ns timing (like bench_similarity) rather than the
+  Bench framework, because the Bench framework's tight loop rapidly allocates
+  and frees the GPU result buffer each iteration, crashing libKGENCompilerRTShared.
 
 Run with: pixi run bench
 
-NOTE: Uses manual timing because the Bench framework crashes with multiple
-parametric instantiations of `add` (Mojo codegen bug). The Bench framework
-is used for the SIMD-only section which doesn't trigger the bug.
+NOTE: bench_with_input is used instead of bench_function to avoid a Mojo
+codegen bug (~25.7) where registering multiple size-parameterized instantiations
+of the same function crashes at runtime inside bitmap_and():
+
+    # This crashes:
+    m.bench_function[bench_add[1_000]](...)
+    m.bench_function[bench_add[10_000]](...)  # panic in bitmap_and
+
+bench_with_input[Int, bench_add[T]] passes size as a runtime Int, so only
+ONE template instantiation of bench_add[T] is created per dtype. The same
+function pointer is called multiple times with different runtime inputs,
+which does not trigger the crash.
 """
 
-from benchmark import Bench, BenchConfig, Bencher, BenchId, keep
+from benchmark import (
+    Bench,
+    BenchConfig,
+    Bencher,
+    BenchId,
+    BenchMetric,
+    ThroughputMeasure,
+    keep,
+)
+
+from sys import has_accelerator
 from time import perf_counter_ns
+
+from gpu.host import DeviceContext
 
 from marrow.arrays import PrimitiveArray
 from marrow.builders import PrimitiveBuilder
-from marrow.dtypes import int32, float64, DataType
-from marrow.kernels.add import _add_simd, add
-from marrow.kernels import binary_simd
+from marrow.dtypes import int32, float32, float64, DataType
+from marrow.kernels.arithmetic import add
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Fixtures
 # ---------------------------------------------------------------------------
 
 
-fn _make_array[T: DataType](size: Int) -> PrimitiveArray[T]:
-    """Build a non-null array of `size` elements [0, 1, 2, ...]."""
+fn _make_array[T: DataType](size: Int) raises -> PrimitiveArray[T]:
     var b = PrimitiveBuilder[T](size)
     for i in range(size):
-        b.unsafe_append(Scalar[T.native](i))
+        b.append(Scalar[T.native](i))
     return b.finish()
 
 
-fn _make_array_with_nulls[T: DataType](size: Int) -> PrimitiveArray[T]:
-    """Build an array with 10% nulls (every 10th element)."""
+fn _make_array_with_nulls[T: DataType](size: Int) raises -> PrimitiveArray[T]:
+    """Build an array with 10% nulls (every 10th element is null)."""
     var b = PrimitiveBuilder[T](size)
     for i in range(size):
-        b.unsafe_set(i, Scalar[T.native](i))
-        if i % 10 != 0:
-            b.bitmap.unsafe_set(i, True)
-    b.length = size
+        if i % 10 == 0:
+            b.append_null()
+        else:
+            b.append(Scalar[T.native](i))
     return b.finish()
 
 
 # ---------------------------------------------------------------------------
-# Timed benchmark helpers
-# ---------------------------------------------------------------------------
-
-
-fn _bench_simd[T: DataType, size: Int](iters: Int) -> Float64:
-    """Benchmark direct SIMD add, return mean microseconds per iteration."""
-    var lhs = _make_array[T](size)
-    var rhs = _make_array[T](size)
-    for _ in range(3):
-        _ = binary_simd[T, _add_simd[T.native]](lhs, rhs)
-    var start = perf_counter_ns()
-    for _ in range(iters):
-        var result = binary_simd[T, _add_simd[T.native]](lhs, rhs)
-        keep(result.unsafe_get(0))
-    return Float64(perf_counter_ns() - start) / Float64(iters) / 1000.0
-
-
-fn _bench_dispatch[T: DataType, size: Int](iters: Int) raises -> Float64:
-    """Benchmark public add() with non-null inputs, return mean us/iter."""
-    var lhs = _make_array[T](size)
-    var rhs = _make_array[T](size)
-    for _ in range(3):
-        _ = add[T](lhs, rhs)
-    var start = perf_counter_ns()
-    for _ in range(iters):
-        var result = add[T](lhs, rhs)
-        keep(result.unsafe_get(0))
-    return Float64(perf_counter_ns() - start) / Float64(iters) / 1000.0
-
-
-fn _bench_nulls[T: DataType, size: Int](iters: Int) raises -> Float64:
-    """Benchmark add() with 10% nulls, return mean us/iter."""
-    var lhs = _make_array_with_nulls[T](size)
-    var rhs = _make_array_with_nulls[T](size)
-    for _ in range(3):
-        _ = add[T](lhs, rhs)
-    var start = perf_counter_ns()
-    for _ in range(iters):
-        var result = add[T](lhs, rhs)
-        keep(result.unsafe_get(1))
-    return Float64(perf_counter_ns() - start) / Float64(iters) / 1000.0
-
-
-# ---------------------------------------------------------------------------
-# Bench framework (SIMD only — Bench + `add` triggers a Mojo codegen crash
-# when multiple parametric sizes coexist in the same binary)
+# Benchmark functions — parameterized by dtype, size passed at runtime
 # ---------------------------------------------------------------------------
 
 
 @parameter
-fn bench_add_simd[T: DataType, size: Int](mut b: Bencher) raises:
-    """SIMD-vectorized add via binary_simd helper."""
+fn bench_add[T: DataType](mut b: Bencher, size: Int) raises:
     var lhs = _make_array[T](size)
     var rhs = _make_array[T](size)
 
     @always_inline
     @parameter
     fn call_fn() raises:
-        var result = binary_simd[T, _add_simd[T.native]](lhs, rhs)
+        var result = add[T](lhs, rhs)
         keep(result.unsafe_get(0))
 
     b.iter[call_fn]()
 
 
+@parameter
+fn bench_add_nulls[T: DataType](mut b: Bencher, size: Int) raises:
+    """add() with 10% nulls in both inputs."""
+    var lhs = _make_array_with_nulls[T](size)
+    var rhs = _make_array_with_nulls[T](size)
+
+    @always_inline
+    @parameter
+    fn call_fn() raises:
+        var result = add[T](lhs, rhs)
+        keep(result.unsafe_get(1))
+
+    b.iter[call_fn]()
+
+
 # ---------------------------------------------------------------------------
-# Output
+# GPU helper — manual timing (cannot use Bench framework: result buffer
+# allocation/free in tight loop crashes libKGENCompilerRTShared)
 # ---------------------------------------------------------------------------
 
 
-fn _print_row(kernel: String, dtype: String, size: Int, us: Float64):
-    var size_str = String(size)
-    var pad1 = " " * (16 - len(kernel))
-    var pad2 = " " * (10 - len(dtype))
-    var pad3 = " " * (10 - len(size_str))
-    print(kernel + pad1 + dtype + pad2 + size_str + pad3 + String(us) + " us")
+fn _bench_gpu_add[T: DataType](
+    size: Int,
+    iters: Int,
+    ctx: DeviceContext,
+) raises -> Float64:
+    """Returns mean microseconds per kernel dispatch with pre-loaded data."""
+    var lhs = _make_array[T](size).to_device(ctx)
+    var rhs = _make_array[T](size).to_device(ctx)
+    ctx.synchronize()
+
+    # Warmup
+    for _ in range(3):
+        var r = add[T](lhs, rhs, ctx)
+        keep(len(r))
+    ctx.synchronize()
+
+    # Timed runs
+    var t0 = perf_counter_ns()
+    for _ in range(iters):
+        var r = add[T](lhs, rhs, ctx)
+        keep(len(r))
+    ctx.synchronize()
+    return Float64(perf_counter_ns() - t0) / Float64(iters) / 1000.0
 
 
 # ---------------------------------------------------------------------------
@@ -131,89 +142,67 @@ fn _print_row(kernel: String, dtype: String, size: Int, us: Float64):
 # ---------------------------------------------------------------------------
 
 
-def main():
-    print("=== Arithmetic add benchmarks ===\n")
-    print("kernel          dtype     size      mean (us/iter)")
-    print("------          -----     ----      --------------")
+def main() raises:
+    var m = Bench(BenchConfig(num_repetitions=3))
+
+    comptime sizes = (1_000, 10_000, 100_000, 1_000_000)
+    comptime size_labels = ("1k", "10k", "100k", "1M")
 
     # --- int32 ---
-    _print_row("simd", "int32", 1_000, _bench_simd[int32, 1_000](1000))
-    _print_row("simd", "int32", 10_000, _bench_simd[int32, 10_000](1000))
-    _print_row("simd", "int32", 100_000, _bench_simd[int32, 100_000](100))
-    _print_row("simd", "int32", 1_000_000, _bench_simd[int32, 1_000_000](10))
-
-    _print_row("dispatch", "int32", 1_000, _bench_dispatch[int32, 1_000](1000))
-    _print_row(
-        "dispatch", "int32", 10_000, _bench_dispatch[int32, 10_000](1000)
-    )
-    _print_row(
-        "dispatch", "int32", 100_000, _bench_dispatch[int32, 100_000](100)
-    )
-    _print_row(
-        "dispatch", "int32", 1_000_000, _bench_dispatch[int32, 1_000_000](10)
-    )
-
-    _print_row("nulls", "int32", 1_000, _bench_nulls[int32, 1_000](1000))
-    _print_row("nulls", "int32", 10_000, _bench_nulls[int32, 10_000](1000))
-    _print_row("nulls", "int32", 100_000, _bench_nulls[int32, 100_000](100))
-    _print_row("nulls", "int32", 1_000_000, _bench_nulls[int32, 1_000_000](10))
+    comptime for si in range(4):
+        m.bench_with_input[Int, bench_add[int32]](
+            BenchId("add[int32]", size_labels[si]),
+            sizes[si],
+            [ThroughputMeasure(BenchMetric.elements, sizes[si])],
+        )
+    comptime for si in range(4):
+        m.bench_with_input[Int, bench_add_nulls[int32]](
+            BenchId("nulls[int32]", size_labels[si]),
+            sizes[si],
+            [ThroughputMeasure(BenchMetric.elements, sizes[si])],
+        )
 
     # --- float64 ---
-    _print_row("simd", "float64", 1_000, _bench_simd[float64, 1_000](1000))
-    _print_row("simd", "float64", 10_000, _bench_simd[float64, 10_000](1000))
-    _print_row("simd", "float64", 100_000, _bench_simd[float64, 100_000](100))
-    _print_row(
-        "simd", "float64", 1_000_000, _bench_simd[float64, 1_000_000](10)
-    )
+    comptime for si in range(4):
+        m.bench_with_input[Int, bench_add[float64]](
+            BenchId("add[float64]", size_labels[si]),
+            sizes[si],
+            [ThroughputMeasure(BenchMetric.elements, sizes[si])],
+        )
+    comptime for si in range(4):
+        m.bench_with_input[Int, bench_add_nulls[float64]](
+            BenchId("nulls[float64]", size_labels[si]),
+            sizes[si],
+            [ThroughputMeasure(BenchMetric.elements, sizes[si])],
+        )
 
-    _print_row(
-        "dispatch", "float64", 1_000, _bench_dispatch[float64, 1_000](1000)
-    )
-    _print_row(
-        "dispatch", "float64", 10_000, _bench_dispatch[float64, 10_000](1000)
-    )
-    _print_row(
-        "dispatch", "float64", 100_000, _bench_dispatch[float64, 100_000](100)
-    )
-    _print_row(
-        "dispatch",
-        "float64",
-        1_000_000,
-        _bench_dispatch[float64, 1_000_000](10),
-    )
-
-    _print_row("nulls", "float64", 1_000, _bench_nulls[float64, 1_000](1000))
-    _print_row("nulls", "float64", 10_000, _bench_nulls[float64, 10_000](1000))
-    _print_row("nulls", "float64", 100_000, _bench_nulls[float64, 100_000](100))
-    _print_row(
-        "nulls", "float64", 1_000_000, _bench_nulls[float64, 1_000_000](10)
-    )
-
-    # --- Bench framework table (SIMD only, proper statistical measurement) ---
-    print("\n=== Bench framework (statistical, SIMD only) ===\n")
-    var m = Bench(BenchConfig(num_repetitions=3))
-    m.bench_function[bench_add_simd[int32, 1_000]](
-        BenchId("simd[int32]", "1000")
-    )
-    m.bench_function[bench_add_simd[int32, 10_000]](
-        BenchId("simd[int32]", "10000")
-    )
-    m.bench_function[bench_add_simd[int32, 100_000]](
-        BenchId("simd[int32]", "100000")
-    )
-    m.bench_function[bench_add_simd[int32, 1_000_000]](
-        BenchId("simd[int32]", "1000000")
-    )
-    m.bench_function[bench_add_simd[float64, 1_000]](
-        BenchId("simd[float64]", "1000")
-    )
-    m.bench_function[bench_add_simd[float64, 10_000]](
-        BenchId("simd[float64]", "10000")
-    )
-    m.bench_function[bench_add_simd[float64, 100_000]](
-        BenchId("simd[float64]", "100000")
-    )
-    m.bench_function[bench_add_simd[float64, 1_000_000]](
-        BenchId("simd[float64]", "1000000")
-    )
     m.dump_report()
+
+    if has_accelerator():
+        var ctx = DeviceContext()
+        comptime gpu_sizes = (1_000, 10_000, 100_000, 1_000_000, 10_000_000)
+        comptime gpu_iters = (500, 100, 20, 5, 2)
+
+        print("\n=== GPU add benchmarks (data pre-loaded on device) ===")
+        print("bench_id               us/call")
+        print("--------               -------")
+
+        comptime for si in range(5):
+            var us = _bench_gpu_add[int32](gpu_sizes[si], gpu_iters[si], ctx)
+            print(
+                "gpu[int32]/"
+                + String(gpu_sizes[si])
+                + "    "
+                + String(us)
+                + " us"
+            )
+
+        comptime for si in range(5):
+            var us = _bench_gpu_add[float32](gpu_sizes[si], gpu_iters[si], ctx)
+            print(
+                "gpu[float32]/"
+                + String(gpu_sizes[si])
+                + "    "
+                + String(us)
+                + " us"
+            )

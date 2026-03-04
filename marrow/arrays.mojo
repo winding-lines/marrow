@@ -196,9 +196,9 @@ struct PrimitiveArray[T: DataType](Movable, Sized):
         if data.dtype != materialize[Self.T]():
             raise Error(
                 "Unexpected dtype '"
-                + String(data.dtype)
+                + data.dtype.__str__()
                 + "' instead of '"
-                + String(materialize[Self.T]())
+                + materialize[Self.T]().__str__()
                 + "'."
             )
         elif len(data.buffers) != 1:
@@ -291,7 +291,7 @@ struct StringArray(Movable, Sized):
         if data.dtype != materialize[string]():
             raise Error(
                 "Unexpected dtype '"
-                + String(data.dtype)
+                + data.dtype.__str__()
                 + "' instead of 'string'."
             )
         elif len(data.buffers) != 2:
@@ -364,7 +364,7 @@ struct ListArray(Movable, Sized):
     fn __init__(out self, ref data: Array) raises:
         if not data.dtype.is_list():
             raise Error(
-                "Unexpected dtype " + String(data.dtype) + " instead of 'list'"
+                "Unexpected dtype " + data.dtype.__str__() + " instead of 'list'"
             )
         elif len(data.buffers) != 1:
             raise Error("ListArray requires exactly one buffer")
@@ -425,7 +425,7 @@ struct FixedSizeListArray(Movable, Sized):
         if not data.dtype.is_fixed_size_list():
             raise Error(
                 "Unexpected dtype "
-                + String(data.dtype)
+                + data.dtype.__str__()
                 + " instead of 'fixed_size_list'"
             )
         elif len(data.buffers) != 0:

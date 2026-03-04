@@ -23,7 +23,7 @@ struct ArrayPrinter(ArrayVisitor):
 
     fn visit[T: DataType](mut self, array: PrimitiveArray[T]) raises:
         self.output.write("PrimitiveArray[")
-        self.output.write(String(materialize[T]()))
+        self.output.write(materialize[T]().__str__())
         self.output.write("]([")
         for i in range(array.length):
             if i > 0:

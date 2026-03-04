@@ -532,9 +532,9 @@ fn binary_array_dispatch[
         raise Error(
             String(name)
             + ": dtype mismatch: "
-            + String(left.dtype)
+            + left.dtype.__str__()
             + " vs "
-            + String(right.dtype)
+            + right.dtype.__str__()
         )
     comptime for dtype in all_numeric_dtypes:
         if left.dtype == materialize[dtype]():
@@ -545,4 +545,4 @@ fn binary_array_dispatch[
                     ctx,
                 )
             )
-    raise Error(String(name) + ": unsupported dtype " + String(left.dtype))
+    raise Error(String(name) + ": unsupported dtype " + left.dtype.__str__())
