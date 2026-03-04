@@ -433,7 +433,7 @@ struct ListArray(Movable, Sized, Writable):
         var result = Array(copy=self.values)
         result.offset = start
         result.length = end - start
-        result.nulls = -1
+        result.nulls = 0
         return result^
 
 
@@ -479,13 +479,14 @@ struct FixedSizeListArray(Movable, Sized, Writable):
             return True
         return self.bitmap.unsafe_get[DType.bool](index + self.offset)
 
-    fn unsafe_get(self, index: Int, out array_data: Array) raises:
+    fn unsafe_get(self, index: Int, out array_data: Array):
         var list_size = self.dtype.size
         var start = (self.offset + index) * list_size
         return Array(
             dtype=self.values.dtype,
             length=list_size,
-            nulls=-1,
+            # TODO: calculate nullcount
+            nulls=0,
             bitmap=self.values.bitmap,
             buffers=self.values.buffers.copy(),
             children=self.values.children.copy(),

@@ -60,30 +60,13 @@ struct ArrayPrinter(ArrayVisitor):
                 self.output.write("...")
                 break
             if array.is_valid(i):
-                var start = Int(
-                    array.offsets.unsafe_get[DType.int32](array.offset + i)
-                )
-                var end = Int(
-                    array.offsets.unsafe_get[DType.int32](array.offset + i + 1)
-                )
-                self.visit(
-                    Array(
-                        dtype=array.values.dtype.copy(),
-                        length=end - start,
-                        nulls=0,
-                        bitmap=array.values.bitmap,
-                        buffers=array.values.buffers.copy(),
-                        offset=start,
-                        children=array.values.children.copy(),
-                    )
-                )
+                self.visit(array.unsafe_get(i))
             else:
                 self.output.write("NULL")
         self.output.write("])")
 
     fn visit(mut self, array: FixedSizeListArray) raises:
         self.output.write("FixedSizeListArray([")
-        var list_size = array.dtype.size
         for i in range(array.length):
             if i > 0:
                 self.output.write(", ")
@@ -91,18 +74,7 @@ struct ArrayPrinter(ArrayVisitor):
                 self.output.write("...")
                 break
             if array.is_valid(i):
-                var start = (array.offset + i) * list_size
-                self.visit(
-                    Array(
-                        dtype=array.values.dtype.copy(),
-                        length=list_size,
-                        nulls=0,
-                        bitmap=array.values.bitmap,
-                        buffers=array.values.buffers.copy(),
-                        offset=start,
-                        children=array.values.children.copy(),
-                    )
-                )
+                self.visit(array.unsafe_get(i))
             else:
                 self.output.write("NULL")
         self.output.write("])")

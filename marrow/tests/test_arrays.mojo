@@ -513,6 +513,39 @@ def test_fixed_size_list_with_nulls():
     assert_true(fsl.is_valid(1))
     assert_false(fsl.is_valid(2))
 
+    # unsafe_get on valid entries returns correct values even when array has nulls
+    var first = fsl.unsafe_get(0).as_int64()
+    assert_equal(first.unsafe_get(0), 1)
+    assert_equal(first.unsafe_get(1), 2)
+    assert_equal(first.unsafe_get(2), 3)
+    var second = fsl.unsafe_get(1).as_int64()
+    assert_equal(second.unsafe_get(0), 4)
+    assert_equal(second.unsafe_get(1), 5)
+    assert_equal(second.unsafe_get(2), 6)
+
+
+def test_fixed_size_list_unsafe_get_dtype():
+    """unsafe_get returns a slice with the child element dtype, not the list dtype."""
+    var ints_b = PrimitiveBuilder[int32](4)
+    ints_b.append(10)
+    ints_b.append(20)
+    ints_b.append(30)
+    ints_b.append(40)
+    var builder = FixedSizeListBuilder(ints_b, list_size=2)
+    builder.append(True)
+    builder.append(True)
+    var fsl = builder.finish()
+
+    var slice0 = fsl.unsafe_get(0)
+    assert_equal(slice0.dtype, int32)
+    assert_equal(slice0.length, 2)
+    assert_equal(slice0.offset, 0)
+
+    var slice1 = fsl.unsafe_get(1)
+    assert_equal(slice1.dtype, int32)
+    assert_equal(slice1.length, 2)
+    assert_equal(slice1.offset, 2)
+
 
 # # def test_fixed_size_list_pretty_print():
 # #     """Pretty printing FixedSizeListArray."""
