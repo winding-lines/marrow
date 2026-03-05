@@ -485,7 +485,7 @@ struct BufferBuilder(Movable):
 # Buffer — immutable buffer for read-only array data
 # ---------------------------------------------------------------------------
 
-
+# TODO: add assertions to ensure alignment and padding invariants hold
 struct Buffer(ImplicitlyCopyable, Movable, Writable):
     """Immutable contiguous memory region.
 

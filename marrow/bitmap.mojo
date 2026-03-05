@@ -122,21 +122,6 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
         """Return a zero-copy view of `length` bits starting at `offset`."""
         return Bitmap(self._buffer, self._offset + offset, length)
 
-    @always_inline
-    fn _simd_offset_range(self) -> Tuple[Int, Int]:
-        """Return (start_byte, end_byte), both 64-byte-aligned, covering all bitmap data.
-
-        start_byte = align_down(_offset >> 3, 64)  — previous cache-line boundary
-        end_byte   = align_up(ceildiv(_offset + _length, 8), 64)  — next cache-line boundary
-
-        The range [start_byte, end_byte) is always a multiple of 64 bytes, so a
-        SIMD loop with width dividing 64 terminates exactly at end_byte with no
-        overshoot.  Bits outside [_offset, _offset+_length) in the result are
-        arbitrary and never observed by operations that respect _offset and _length.
-        """
-        var start = math.align_down(self._offset >> 3, 64)
-        var end = math.align_up(math.ceildiv(self._offset + self._length, 8), 64)
-        return (start, end)
 
     # --- Bulk SIMD operations ---
     #
@@ -174,7 +159,11 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
         comptime assert 64 % width == 0
         comptime unroll = 64 // width
 
-        var start, end = self._simd_offset_range()
+        # Arrow guarantees buffers are 64-byte aligned and zero-padded, so reading
+        # outside [_offset, _offset+_length) is safe.  Rounding to 64-byte multiples
+        # lets the SIMD loop (step=64) cover everything exactly with no tail.
+        var start = math.align_down(self._offset >> 3, 64)
+        var end = math.align_up(math.ceildiv(self._offset + self._length, 8), 64)
         var total_bytes = end - start
         var builder = BufferBuilder.alloc_uninit(total_bytes)
 
