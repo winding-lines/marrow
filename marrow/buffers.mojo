@@ -333,6 +333,17 @@ struct BufferBuilder(Movable):
         return BufferBuilder(ptr, byte_size)
 
     @staticmethod
+    fn alloc_uninit(byte_size: Int) -> BufferBuilder:
+        """Allocate a 64-byte-aligned buffer without zero-filling.
+
+        Use only when the caller guarantees every byte will be written
+        before the buffer is read (e.g. SIMD loops that cover the full range).
+        """
+        var size = math.align_up(byte_size, 64)
+        var ptr = alloc[UInt8](size, alignment=64)
+        return BufferBuilder(ptr, size)
+
+    @staticmethod
     fn alloc_host[
         I: Intable, //, T: DType = DType.uint8
     ](ctx: DeviceContext, length: I) raises -> BufferBuilder:

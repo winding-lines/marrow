@@ -60,7 +60,7 @@ from marrow.dtypes import DataType, all_numeric_dtypes
 # ---------------------------------------------------------------------------
 
 
-fn bitmap_and(a: Optional[Bitmap], b: Optional[Bitmap]) -> Optional[Bitmap]:
+fn bitmap_and(a: Optional[Bitmap], b: Optional[Bitmap]) raises -> Optional[Bitmap]:
     """Compute the output validity bitmap as the bitwise AND of two input bitmaps.
 
     Output bit i is True iff both a[i] and b[i] are True (valid).

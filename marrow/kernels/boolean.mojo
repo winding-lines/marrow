@@ -5,7 +5,7 @@ from marrow.bitmap import Bitmap
 from marrow.dtypes import bool_ as bool_dt
 
 
-fn count_true(array: PrimitiveArray[bool_dt]) -> Int:
+fn count_true(array: PrimitiveArray[bool_dt]) raises -> Int:
     """Count True values in a bit-packed boolean array.
 
     Note: Arrow booleans are bit-packed — each buffer byte holds 8 elements.
