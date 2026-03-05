@@ -219,6 +219,80 @@ def test_count_set_bits_large():
     assert_equal(bm.count_set_bits(), 512)
 
 
+def test_count_set_bits_large_offset_byte_aligned():
+    """Count bits on a slice with a large byte-aligned offset (> 64 bytes).
+
+    The aligned range from _simd_offset_range will include extra leading
+    bytes that must not be counted.
+    """
+    # 800 bits all set, then slice at bit 576 (byte 72) for 64 bits.
+    var b = BitmapBuilder.alloc(800)
+    b.set_range(0, 800, True)
+    var full = b.finish(800)
+    var sliced = full.slice(576, 64)
+    assert_equal(sliced.count_set_bits(), 64)
+
+
+def test_count_set_bits_large_offset_with_shift():
+    """Count bits on a slice with a large offset AND sub-byte shift.
+
+    Offset 577 → byte 72, shift 1. The aligned range starts at byte 64,
+    so there are 8 leading bytes of garbage to exclude.
+    """
+    var b = BitmapBuilder.alloc(800)
+    b.set_range(0, 800, True)
+    var full = b.finish(800)
+    var sliced = full.slice(577, 48)
+    assert_equal(sliced.count_set_bits(), 48)
+
+
+def test_count_set_bits_large_offset_sparse():
+    """Count bits with large offset where surrounding bytes have set bits.
+
+    Ensures the count only includes bits within the slice, not the
+    extra bytes pulled in by 64-byte alignment.
+    """
+    # Set every bit in a 1000-bit bitmap, then slice a narrow window.
+    var b = BitmapBuilder.alloc(1000)
+    b.set_range(0, 1000, True)
+    var full = b.finish(1000)
+    # Slice at bit 700 (byte 87, shift 4), length 10.
+    # Aligned range starts at byte 64, so ~23 leading bytes of all-ones
+    # must be excluded from the count.
+    var sliced = full.slice(700, 10)
+    assert_equal(sliced.count_set_bits(), 10)
+
+
+def test_count_set_bits_large_offset_none_set():
+    """Count on a slice where only surrounding bytes have bits set.
+
+    Verifies zero count when the slice itself has no bits set but
+    the aligned padding region does.
+    """
+    # Set bits around but not in the slice window.
+    var b = BitmapBuilder.alloc(1000)
+    b.set_range(0, 500, True)    # bits 0-499 set
+    b.set_range(520, 480, True)  # bits 520-999 set
+    var full = b.finish(1000)
+    # Slice at bit 500, length 20 → all clear.
+    var sliced = full.slice(500, 20)
+    assert_equal(sliced.count_set_bits(), 0)
+
+
+def test_count_set_bits_small_slice_in_large_bitmap():
+    """Tiny slice (< 1 SIMD width) deep inside a large all-ones bitmap.
+
+    Both lead and trail corrections must fire, and the aligned range
+    includes many full bytes on both sides.
+    """
+    var b = BitmapBuilder.alloc(2000)
+    b.set_range(0, 2000, True)
+    var full = b.finish(2000)
+    # Slice at bit 1003 (byte 125, shift 3), length 5.
+    var sliced = full.slice(1003, 5)
+    assert_equal(sliced.count_set_bits(), 5)
+
+
 # ---------------------------------------------------------------------------
 # slice
 # ---------------------------------------------------------------------------
