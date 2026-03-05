@@ -157,10 +157,8 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
 
         var src = self._buffer.unsafe_ptr() + start
         var dst = builder.unsafe_ptr()
-        var i = 0
-        while i < total_bytes:
+        for i in range(0, total_bytes, width):
             (dst + i).store(~(src + i).load[width=width]())
-            i += width
 
         var new_bit_offset = self._offset - (start << 3)
         return Bitmap(builder.finish(), new_bit_offset, self._length)
@@ -180,72 +178,64 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
     ](self, other: Bitmap) -> Bitmap:
         """Apply a byte-level binary operation across two bitmaps, returning a new Bitmap.
 
-        Selects between two code paths based on the sub-byte offsets
-        (`shift = offset & 7`) of both operands:
+        Uses `_simd_offset_range` to iterate over 64-byte-aligned SIMD blocks,
+        matching the pattern in `__invert__`.
 
-        **Same shift** (`shift_a == shift_b`, including the byte-aligned case `shift == 0`):
-          Both source byte ranges are in the same relative bit alignment, so a
-          direct SIMD op suffices — no bit shuffling needed.  The output carries
-          `offset = shift_a` so the leading garbage bits are never observed.
-          Measured throughput: ~360–370 GElems/s at 10 M bits (Apple M-series).
-
-        **Different shifts** (`shift_a != shift_b`):
-          Shifts only the higher-offset operand right by `delta = |shift_a - shift_b|`
-          bits using a single overlapping SIMD load (the "shift-one" technique):
-
-              aligned[i] = (hi[i] >> delta) | (hi[i+1] << (8 - delta))
-
-          The lower-offset operand is read directly without any extra loads.
-          The output carries `offset = min(shift_a, shift_b)`.
-          Measured throughput: ~305 GElems/s at 10 M bits — ~24% faster than
-          shifting both operands independently, and ~500× faster than the
-          previous bit-by-bit fallback.
+        When both operands have the same sub-byte offset, a direct SIMD op
+        suffices.  When they differ, the higher-offset operand is shifted right
+        by `delta = |shift_a - shift_b|` bits via overlapping SIMD loads.
 
         Arrow buffers are 64-byte aligned and zero-padded so SIMD loads past the
         last valid byte are always safe within the padded region.
         """
         comptime width = simd_byte_width()
         comptime assert 64 % width == 0
-        var shift_a = self._offset & 7
-        var shift_b = other._offset & 7
-        var a = self._buffer.unsafe_ptr() + (self._offset >> 3)
-        var b = other._buffer.unsafe_ptr() + (other._offset >> 3)
 
-        var total_bits = min(shift_a, shift_b) + self._length
-        var byte_count = math.ceildiv(total_bits, 8)
-        var builder = BufferBuilder.alloc[DType.bool](total_bits)
-        var dst = builder.ptr
-        var i = 0
-        if shift_a == shift_b:
-            # Most common path: identical sub-byte alignment (covers all freshly-built
-            # bitmaps where both offsets are 0, and sliced bitmaps with the same offset).
-            # Direct SIMD op; output carries the shared offset.
-            while i < byte_count:
-                (dst + i).store(op[width]((a + i).load[width=width](), (b + i).load[width=width]()))
-                i += width
-            return Bitmap(builder.finish(), shift_a, self._length)
-        elif shift_a > shift_b:
-            # Align `a` to `b`'s layout: shift `a` right by delta.
-            # Output offset = shift_b = min(shift_a, shift_b).
-            var delta = shift_a - shift_b
-            while i < byte_count:
-                var aligned_a = ((a + i).load[width=width]() >> UInt8(delta)) | (
-                    (a + i + 1).load[width=width]() << UInt8(8 - delta)
-                )
-                (dst + i).store(op[width](aligned_a, (b + i).load[width=width]()))
-                i += width
-            return Bitmap(builder.finish(), shift_b, self._length)
+        var left_start, left_end = self._simd_offset_range()
+        var right_start, _ = other._simd_offset_range()
+        var total_bytes = left_end - left_start
+        var builder = BufferBuilder.alloc(total_bytes)
+        var dst = builder.unsafe_ptr()
+
+        # Both base pointers are 64-byte aligned.
+        var left = self._buffer.unsafe_ptr() + left_start
+        var right = other._buffer.unsafe_ptr() + right_start
+
+        # Byte index offset: right[i + byte_delta] corresponds to left[i].
+        # When both offsets are 0 (common case), byte_delta is 0 and both
+        # iterate in lockstep with aligned loads.
+        var left_lead = (self._offset >> 3) - left_start
+        var right_lead = (other._offset >> 3) - right_start
+        var byte_delta = right_lead - left_lead
+
+        var left_shift = self._offset & 7
+        var right_shift = other._offset & 7
+        if left_shift == right_shift:
+            for i in range(0, total_bytes, width):
+                var left_chunk = (left + i).load[width=width]()
+                var right_chunk = (right + i + byte_delta).load[width=width]()
+                (dst + i).store(op[width](left_chunk, right_chunk))
+        elif left_shift > right_shift:
+            # Shift `left` right by delta to align with `right`.
+            var delta = left_shift - right_shift
+            for i in range(0, total_bytes, width):
+                var left_chunk = (left + i).load[width=width]()
+                var left_next = (left + i + 1).load[width=width]()
+                var left_aligned = (left_chunk >> UInt8(delta)) | (left_next << UInt8(8 - delta))
+                var right_chunk = (right + i + byte_delta).load[width=width]()
+                (dst + i).store(op[width](left_aligned, right_chunk))
         else:
-            # Align `b` to `a`'s layout: shift `b` right by delta.
-            # Output offset = shift_a = min(shift_a, shift_b).
-            var delta = shift_b - shift_a
-            while i < byte_count:
-                var aligned_b = ((b + i).load[width=width]() >> UInt8(delta)) | (
-                    (b + i + 1).load[width=width]() << UInt8(8 - delta)
-                )
-                (dst + i).store(op[width]((a + i).load[width=width](), aligned_b))
-                i += width
-            return Bitmap(builder.finish(), shift_a, self._length)
+            # Shift `right` right by delta to align with `left`.
+            var delta = right_shift - left_shift
+            for i in range(0, total_bytes, width):
+                var left_chunk = (left + i).load[width=width]()
+                var right_chunk = (right + i + byte_delta).load[width=width]()
+                var right_next = (right + i + byte_delta + 1).load[width=width]()
+                var right_aligned = (right_chunk >> UInt8(delta)) | (right_next << UInt8(8 - delta))
+                (dst + i).store(op[width](left_chunk, right_aligned))
+
+        var new_bit_offset = self._offset - (left_start << 3)
+        return Bitmap(builder.finish(), new_bit_offset, self._length)
 
     fn write_to[W: Writer](self, mut writer: W):
         writer.write(

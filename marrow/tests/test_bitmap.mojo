@@ -492,6 +492,104 @@ def test_and_different_offsets():
         assert_equal(r.is_valid(i), i % 2 == 0)
 
 
+def test_and_different_offsets_large_byte_delta():
+    """AND where byte-level offsets differ by more than 8 bytes."""
+    # Build a large bitmap so we can slice at widely separated positions.
+    # Set every even bit in the range we care about.
+    var full = _make(600, [
+        100, 102, 104, 106, 108, 110, 112, 114,
+        500, 502, 504, 506, 508, 510, 512, 514,
+    ])
+    # a: slice at bit 100 (byte 12, shift 4), 16 bits → indices 0,2,4,6,8,10,12,14 set
+    var a = full.slice(100, 16)
+    # b: slice at bit 500 (byte 62, shift 4), 16 bits → indices 0,2,4,6,8,10,12,14 set
+    var b = full.slice(500, 16)
+    # Same sub-byte shift (4), but byte_delta = 50 — well beyond a single SIMD width.
+    var r = a & b
+    assert_equal(len(r), 16)
+    for i in range(16):
+        assert_equal(r.is_valid(i), i % 2 == 0)
+
+
+def test_and_different_offsets_large_byte_delta_different_shift():
+    """AND where byte offsets AND sub-byte shifts both differ."""
+    # a at bit 100 (byte 12, shift 4); b at bit 503 (byte 62, shift 7).
+    # byte_delta = 50, bit shift delta = 3.
+    var bits_a = List[Int]()
+    var bits_b = List[Int]()
+    for i in range(16):
+        bits_a.append(100 + i)  # all 16 bits set starting at 100
+        bits_b.append(503 + i)  # all 16 bits set starting at 503
+    var full_a = _make(600, bits_a)
+    var full_b = _make(600, bits_b)
+    var a = full_a.slice(100, 16)
+    var b = full_b.slice(503, 16)
+    var r = a & b
+    assert_equal(len(r), 16)
+    # Both slices are all-ones, so AND should be all-ones.
+    for i in range(16):
+        assert_true(r.is_valid(i))
+
+
+def test_or_different_offsets_large_byte_delta():
+    """OR where byte-level offsets differ significantly."""
+    var full_a = _make(600, [100, 104, 108])
+    var full_b = _make(600, [500, 501, 502])
+    var a = full_a.slice(100, 12)  # indices 0,4,8 set
+    var b = full_b.slice(500, 12)  # indices 0,1,2 set
+    var r = a | b
+    assert_equal(len(r), 12)
+    assert_true(r.is_valid(0))   # set in both
+    assert_true(r.is_valid(1))   # set in b
+    assert_true(r.is_valid(2))   # set in b
+    assert_false(r.is_valid(3))
+    assert_true(r.is_valid(4))   # set in a
+    assert_false(r.is_valid(5))
+    assert_false(r.is_valid(6))
+    assert_false(r.is_valid(7))
+    assert_true(r.is_valid(8))   # set in a
+    assert_false(r.is_valid(9))
+    assert_false(r.is_valid(10))
+    assert_false(r.is_valid(11))
+
+
+def test_xor_different_offsets_large_byte_delta():
+    """XOR where byte-level offsets differ by > 64 bytes."""
+    var bits_a = List[Int]()
+    var bits_b = List[Int]()
+    for i in range(16):
+        bits_a.append(80 + i)   # all set
+        bits_b.append(592 + i)  # all set
+    var full_a = _make(700, bits_a)
+    var full_b = _make(700, bits_b)
+    var a = full_a.slice(80, 16)   # byte 10, shift 0
+    var b = full_b.slice(592, 16)  # byte 74, shift 0
+    var r = a ^ b
+    assert_equal(len(r), 16)
+    # Both all-ones → XOR should be all-zeros.
+    for i in range(16):
+        assert_false(r.is_valid(i))
+
+
+def test_and_not_different_offsets_large_byte_delta():
+    """AND-NOT where byte-level offsets differ significantly."""
+    var bits_a = List[Int]()
+    for i in range(16):
+        bits_a.append(100 + i)  # all set
+    var full_a = _make(600, bits_a)
+    var full_b = _make(600, [500, 502, 504, 506])  # even indices set
+    var a = full_a.slice(100, 16)  # all-ones
+    var b = full_b.slice(500, 16)  # indices 0,2,4,6 set
+    var r = a.and_not(b)
+    assert_equal(len(r), 16)
+    # a & ~b: clear bits where b is set → odd indices remain
+    for i in range(16):
+        if i < 8:
+            assert_equal(r.is_valid(i), i % 2 != 0)
+        else:
+            assert_true(r.is_valid(i))
+
+
 def test_invert_with_offset():
     var full = _make(16, [4, 5, 6, 7])
     var s = full.slice(4, 8)  # bits 4-11 → [1,1,1,1,0,0,0,0]
