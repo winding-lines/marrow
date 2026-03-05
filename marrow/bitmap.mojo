@@ -124,17 +124,17 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
     # with no overshoot.  Bits outside [_offset, _offset+_length) in results
     # are arbitrary; all operations that consume bitmaps respect _offset and _length.
 
-    fn __and__(self, other: Bitmap) -> Bitmap:
+    fn __and__(self, other: Bitmap) raises -> Bitmap:
         """Return the bitwise AND of self and other."""
         debug_assert(self._length == other._length, "Bitmap lengths must match")
         return self._binop[_and](other)
 
-    fn __or__(self, other: Bitmap) -> Bitmap:
+    fn __or__(self, other: Bitmap) raises -> Bitmap:
         """Return the bitwise OR of self and other."""
         debug_assert(self._length == other._length, "Bitmap lengths must match")
         return self._binop[_or](other)
 
-    fn __xor__(self, other: Bitmap) -> Bitmap:
+    fn __xor__(self, other: Bitmap) raises -> Bitmap:
         """Return the bitwise XOR of self and other."""
         debug_assert(self._length == other._length, "Bitmap lengths must match")
         return self._binop[_xor](other)
@@ -163,7 +163,7 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
         var new_bit_offset = self._offset - (start << 3)
         return Bitmap(builder.finish(), new_bit_offset, self._length)
 
-    fn and_not(self, other: Bitmap) -> Bitmap:
+    fn and_not(self, other: Bitmap) raises -> Bitmap:
         """Return self & ~other  (A AND NOT B).
 
         Useful for null propagation: combine validity where *both* must be valid,
@@ -175,7 +175,7 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
     @always_inline
     fn _binop[
         op: fn[W: Int](SIMD[DType.uint8, W], SIMD[DType.uint8, W]) -> SIMD[DType.uint8, W]
-    ](self, other: Bitmap) -> Bitmap:
+    ](self, other: Bitmap) raises -> Bitmap:
         """Apply a byte-level binary operation across two bitmaps, returning a new Bitmap.
 
         Uses `_simd_offset_range` to iterate over 64-byte-aligned SIMD blocks,
@@ -210,10 +210,12 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
 
         var left_shift = self._offset & 7
         var right_shift = other._offset & 7
+
+        var right_ = right + byte_delta  # Adjust right pointer by byte_delta for aligned access
         if left_shift == right_shift:
             for i in range(0, total_bytes, width):
                 var left_chunk = (left + i).load[width=width]()
-                var right_chunk = (right + i + byte_delta).load[width=width]()
+                var right_chunk = (right_ + i).load[width=width]()
                 (dst + i).store(op[width](left_chunk, right_chunk))
         elif left_shift > right_shift:
             # Shift `left` right by delta to align with `right`.
@@ -222,15 +224,15 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
                 var left_chunk = (left + i).load[width=width]()
                 var left_next = (left + i + 1).load[width=width]()
                 var left_aligned = (left_chunk >> UInt8(delta)) | (left_next << UInt8(8 - delta))
-                var right_chunk = (right + i + byte_delta).load[width=width]()
+                var right_chunk = (right_ + i).load[width=width]()
                 (dst + i).store(op[width](left_aligned, right_chunk))
         else:
             # Shift `right` right by delta to align with `left`.
             var delta = right_shift - left_shift
             for i in range(0, total_bytes, width):
                 var left_chunk = (left + i).load[width=width]()
-                var right_chunk = (right + i + byte_delta).load[width=width]()
-                var right_next = (right + i + byte_delta + 1).load[width=width]()
+                var right_chunk = (right_ + i).load[width=width]()
+                var right_next = (right_ + i + 1).load[width=width]()
                 var right_aligned = (right_chunk >> UInt8(delta)) | (right_next << UInt8(8 - delta))
                 (dst + i).store(op[width](left_chunk, right_aligned))
 
