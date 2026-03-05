@@ -65,30 +65,16 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
         return not self.is_valid(index)
 
     fn count_set_bits(self) -> Int:
-        """Count set bits in [_offset, _offset + _length) using SIMD popcount."""
+        """Count set bits in [_offset, _offset + _length) using SIMD popcount.
+
+        Uses lead/trail corrections for boundary bytes so no zero-padding
+        invariant is required — works correctly regardless of what lies in
+        the buffer outside the bitmap's view.
+        """
         if self._length == 0:
             return 0
-
         comptime width = simd_byte_width()
         var ptr = self._buffer.unsafe_ptr()
-
-        # Fast path: non-sliced bitmap (_offset == 0).
-        # Zero-padding invariant guarantees bits beyond _length are 0, so the
-        # SIMD loop can overshoot byte_count into the padded region without
-        # overcounting.  No lead or trail correction needed.
-        if self._offset == 0:
-            var byte_count = (self._length + 7) >> 3
-            var count = 0
-            var i = 0
-            while i < byte_count:
-                count += Int(pop_count((ptr + i).load[width=width]()).reduce_add())
-                i += width
-            return count
-
-        # General path: sliced bitmap (_offset != 0).
-        # Shadow bytes beyond byte_end_ceil may be non-zero (original buffer
-        # data), so the SIMD loop cannot overshoot safely.  Scalar tail handles
-        # remainder bytes; lead/trail subtractions correct boundary bytes.
         var bit_start = self._offset
         var bit_end = self._offset + self._length
         var byte_start = bit_start >> 3
@@ -115,28 +101,28 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
         return Bitmap(self._buffer, self._offset + offset, length)
 
     @always_inline
-    fn _prev_aligned_offset(self) -> Int:
-        """Return the byte offset of the nearest preceding 64-byte aligned address.
+    fn _simd_offset_range(self) -> Tuple[Int, Int]:
+        """Return (start_byte, end_byte), both 64-byte-aligned, covering all bitmap data.
 
-        Backs up from this bitmap's first byte to the nearest 64-byte boundary
-        within the buffer: `align_down(_offset >> 3, 64)`.  The number of lead
-        bytes between that address and the bitmap's first byte is
-        `(_offset >> 3) - _prev_aligned_offset()`.
+        start_byte = align_down(_offset >> 3, 64)  — previous cache-line boundary
+        end_byte   = align_up(ceildiv(_offset + _length, 8), 64)  — next cache-line boundary
+
+        The range [start_byte, end_byte) is always a multiple of 64 bytes, so a
+        SIMD loop with width dividing 64 terminates exactly at end_byte with no
+        overshoot.  Bits outside [_offset, _offset+_length) in the result are
+        arbitrary and never observed by operations that respect _offset and _length.
         """
-        return math.align_down(self._offset >> 3, 64)
+        var start = math.align_down(self._offset >> 3, 64)
+        var end = math.align_up(math.ceildiv(self._offset + self._length, 8), 64)
+        return (start, end)
 
     # --- Bulk SIMD operations ---
     #
-    # Fast path: byte-aligned offsets → pure SIMD over all bytes.
     # Arrow buffers are 64-byte aligned and zero-padded to multiples of 64 B.
-    # simd_byte_width() ∈ {16,32,64} all divide 64, so a
-    # SIMD load/store never goes out of bounds — no scalar tail needed.
-    # For binary ops, padding bytes are zero in both inputs (invariant upheld
-    # at construction), so `0 OP 0 = 0` — no masking needed.  For __invert__,
-    # padding inverts to 0xFF but count_set_bits/is_valid use _length to bound
-    # all reads, so the unmasked shadow bytes are never observed.
-    #
-    # Fallback: non-byte-aligned offset → correct bit-by-bit loop.
+    # simd_byte_width() ∈ {16,32,64} all divide 64, so SIMD loops over ranges
+    # returned by `_simd_byte_offset_range` terminate exactly on a cache-line boundary
+    # with no overshoot.  Bits outside [_offset, _offset+_length) in results
+    # are arbitrary; all operations that consume bitmaps respect _offset and _length.
 
     fn __and__(self, other: Bitmap) -> Bitmap:
         """Return the bitwise AND of self and other."""
@@ -156,38 +142,28 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
     fn __invert__(self) -> Bitmap:
         """Return the bitwise NOT of this bitmap.
 
-        Reads from the nearest preceding 64-byte aligned address (see
-        `_prev_aligned_offset`) so every SIMD load is cache-line aligned.
-        The result carries `_offset = lead_bytes * 8 + shift` where `lead_bytes`
-        is the byte distance to that boundary (0–63) and `shift = _offset & 7`.
-
-        When `result_offset == 0` (source was already cache-line AND byte aligned),
-        `count_set_bits` uses the fast path which requires zero-padding past
-        `_length`; the SIMD overshoot bytes are zeroed back.  For any non-zero
-        `result_offset`, `count_set_bits` takes the general path (lead/trail
-        subtraction), so no fixup is needed.
+        Operates over the cache-line-aligned byte range from `_simd_byte_offset_range`,
+        so every SIMD load/store is aligned and the loop terminates exactly on a
+        64-byte boundary with no overshoot.  The result carries
+        `_offset = lead_bytes * 8 + (self._offset & 7)` where `lead_bytes` is
+        the byte distance from the aligned start to the bitmap's first byte.
         """
-        var shift = self._offset & 7
-        var aligned_offset = self._prev_aligned_offset()
-        var lead_bytes = (self._offset >> 3) - aligned_offset
-        var src = self._buffer.unsafe_ptr() + aligned_offset
-        var byte_count = math.ceildiv(shift + self._length, 8)
-        var total_bytes = lead_bytes + byte_count
-        var builder = BufferBuilder.alloc(total_bytes)
-        var dst = builder.unsafe_ptr()
         comptime width = simd_byte_width()
         comptime assert 64 % width == 0
+
+        var start, end = self._simd_offset_range()
+        var total_bytes = end - start
+        var builder = BufferBuilder.alloc(total_bytes)
+
+        var src = self._buffer.unsafe_ptr() + start
+        var dst = builder.unsafe_ptr()
         var i = 0
         while i < total_bytes:
             (dst + i).store(~(src + i).load[width=width]())
             i += width
-        var result_offset = (lead_bytes << 3) + shift
-        if result_offset == 0:
-            var trail = self._length & 7
-            if trail != 0:
-                dst[total_bytes - 1] &= UInt8((1 << trail) - 1)
-            memset(dst + total_bytes, 0, i - total_bytes)
-        return Bitmap(builder.finish(), result_offset, self._length)
+
+        var new_bit_offset = self._offset - (start << 3)
+        return Bitmap(builder.finish(), new_bit_offset, self._length)
 
     fn and_not(self, other: Bitmap) -> Bitmap:
         """Return self & ~other  (A AND NOT B).
@@ -235,15 +211,15 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
         var a = self._buffer.unsafe_ptr() + (self._offset >> 3)
         var b = other._buffer.unsafe_ptr() + (other._offset >> 3)
 
+        var total_bits = min(shift_a, shift_b) + self._length
+        var byte_count = math.ceildiv(total_bits, 8)
+        var builder = BufferBuilder.alloc[DType.bool](total_bits)
+        var dst = builder.ptr
+        var i = 0
         if shift_a == shift_b:
             # Most common path: identical sub-byte alignment (covers all freshly-built
             # bitmaps where both offsets are 0, and sliced bitmaps with the same offset).
             # Direct SIMD op; output carries the shared offset.
-            var total_bits = shift_a + self._length
-            var byte_count = math.ceildiv(total_bits, 8)
-            var builder = BufferBuilder.alloc[DType.bool](total_bits)
-            var dst = builder.ptr
-            var i = 0
             while i < byte_count:
                 (dst + i).store(op[width]((a + i).load[width=width](), (b + i).load[width=width]()))
                 i += width
@@ -252,11 +228,6 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
             # Align `a` to `b`'s layout: shift `a` right by delta.
             # Output offset = shift_b = min(shift_a, shift_b).
             var delta = shift_a - shift_b
-            var total_bits = shift_b + self._length
-            var byte_count = math.ceildiv(total_bits, 8)
-            var builder = BufferBuilder.alloc[DType.bool](total_bits)
-            var dst = builder.ptr
-            var i = 0
             while i < byte_count:
                 var aligned_a = ((a + i).load[width=width]() >> UInt8(delta)) | (
                     (a + i + 1).load[width=width]() << UInt8(8 - delta)
@@ -268,11 +239,6 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
             # Align `b` to `a`'s layout: shift `b` right by delta.
             # Output offset = shift_a = min(shift_a, shift_b).
             var delta = shift_b - shift_a
-            var total_bits = shift_a + self._length
-            var byte_count = math.ceildiv(total_bits, 8)
-            var builder = BufferBuilder.alloc[DType.bool](total_bits)
-            var dst = builder.ptr
-            var i = 0
             while i < byte_count:
                 var aligned_b = ((b + i).load[width=width]() >> UInt8(delta)) | (
                     (b + i + 1).load[width=width]() << UInt8(8 - delta)

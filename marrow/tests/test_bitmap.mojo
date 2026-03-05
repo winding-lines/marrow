@@ -66,7 +66,7 @@ def test_builder_set_range_all_true():
 
 
 def test_builder_set_range_partial():
-    """set_range sets exactly the requested range, leaving the rest unchanged."""
+    # set_range sets exactly the requested range, leaving the rest unchanged
     var b = BitmapBuilder.alloc(16)
     b.set_range(4, 8, True)  # bits 4-11 set
     var bm = b.finish(16)
@@ -100,7 +100,7 @@ def test_builder_set_range_zero_length():
 
 
 def test_builder_extend():
-    """extend copies bits from a Bitmap into the builder at dst_start."""
+    # extend copies bits from a Bitmap into the builder at dst_start
     var src_b = BitmapBuilder.alloc(6)
     src_b.set_bit(0, True)
     src_b.set_bit(5, True)
@@ -118,7 +118,7 @@ def test_builder_extend():
 
 
 def test_builder_extend_with_offset():
-    """extend into a non-zero dst_start position."""
+    # extend into a non-zero dst_start position
     var src_b = BitmapBuilder.alloc(2)
     src_b.set_bit(0, True)
     var src = src_b.finish(2)
@@ -194,7 +194,7 @@ def test_count_set_bits_known_pattern():
 
 
 def test_count_set_bits_partial_last_byte():
-    """10-bit bitmap: bits 0-7 all set, bits 8-9 both set."""
+    # 10-bit bitmap: bits 0-7 all set, bits 8-9 both set
     var b = BitmapBuilder.alloc(10)
     b.set_range(0, 10, True)
     var bm = b.finish(10)
@@ -202,7 +202,7 @@ def test_count_set_bits_partial_last_byte():
 
 
 def test_count_set_bits_with_offset():
-    """count_set_bits on a sliced bitmap respects _offset."""
+    # count_set_bits on a sliced bitmap respects _offset
     var b = BitmapBuilder.alloc(16)
     b.set_range(0, 16, True)
     var full = b.finish(16)
@@ -212,7 +212,7 @@ def test_count_set_bits_with_offset():
 
 
 def test_count_set_bits_large():
-    """Exercises the SIMD loop for multi-SIMD-width bitmaps."""
+    # exercises the SIMD loop for multi-SIMD-width bitmaps
     var b = BitmapBuilder.alloc(1024)
     b.set_range(0, 512, True)  # first half set
     var bm = b.finish(1024)
@@ -225,7 +225,7 @@ def test_count_set_bits_large():
 
 
 def test_slice_shares_buffer():
-    """slice returns a zero-copy view with correct offset and length."""
+    # slice returns a zero-copy view with correct offset and length
     var bm = _make(16, [0, 5, 10, 15])
     var s = bm.slice(4, 8)  # bits 4-11 of original
     assert_equal(len(s), 8)
@@ -316,7 +316,7 @@ def test_and_basic():
 
 
 def test_and_identity():
-    """a & all-ones == a."""
+    # a & all-ones == a
     var a = _make(16, [1, 5, 9, 13])
     var ones_b = BitmapBuilder.alloc(16)
     ones_b.set_range(0, 16, True)
@@ -327,7 +327,7 @@ def test_and_identity():
 
 
 def test_and_annihilator():
-    """a & all-zeros == all-zeros."""
+    # a & all-zeros == all-zeros
     var a = _make(16, [1, 5, 9, 13])
     var zeros = _make(16, [])
     var r = a & zeros
@@ -336,7 +336,7 @@ def test_and_annihilator():
 
 
 def test_and_large():
-    """Exercises the SIMD loop."""
+    # exercises the SIMD loop
     var b1 = BitmapBuilder.alloc(1024)
     b1.set_range(0, 512, True)
     var a = b1.finish(1024)
@@ -365,7 +365,7 @@ def test_or_basic():
 
 
 def test_or_idempotent():
-    """a | a == a."""
+    # a | a == a
     var a = _make(16, [0, 3, 7, 10])
     var r = a | a
     for i in range(16):
@@ -389,7 +389,7 @@ def test_xor_basic():
 
 
 def test_xor_self_is_zero():
-    """a ^ a == all-zeros."""
+    # a ^ a == all-zeros
     var a = _make(16, [1, 3, 5, 7])
     var r = a ^ a
     for i in range(16):
@@ -413,7 +413,7 @@ def test_and_not_basic():
 
 
 def test_and_not_with_none_mask():
-    """a.and_not(all-zeros) == a."""
+    # a.and_not(all-zeros) == a
     var a = _make(8, [0, 3, 7])
     var zeros = _make(8, [])
     var r = a.and_not(zeros)
@@ -507,7 +507,7 @@ def test_invert_with_offset():
 
 
 def test_invert_large_byte_offset():
-    """__invert__ with byte_offset > 63: exercises the lead_bytes > 0 code path."""
+    # __invert__ with byte_offset > 63: exercises the lead_bytes > 0 code path
     # 600-bit source; slice at bit 576 → byte_offset=72, lead_bytes=8, shift=0.
     # Set bits 577 and 578 of the full bitmap (slice indices 1 and 2).
     var full = _make(600, [577, 578])
@@ -526,7 +526,7 @@ def test_invert_large_byte_offset():
 
 
 def test_invert_large_byte_offset_with_shift():
-    """__invert__ with large byte_offset AND non-zero sub-byte shift."""
+    # __invert__ with large byte_offset AND non-zero sub-byte shift
     # Slice at bit 577 → byte_offset=72, shift=1, lead_bytes=8.
     # full bits 577, 578, 580 set → slice indices 0, 1, 3 set.
     var full = _make(600, [577, 578, 580])
