@@ -127,6 +127,66 @@ fn bench_set_range(mut b: Bencher, size: Int) raises:
 
 
 # ---------------------------------------------------------------------------
+# Cache-alignment benchmarks: large byte offsets
+# ---------------------------------------------------------------------------
+#
+# These benchmarks exercise the cache-alignment optimization in __invert__ and
+# _binop when the source bitmap has a large byte offset into its buffer.
+#
+# aligned_cache: byte_offset = 128 (multiple of 64) → lead_bytes = 0, no change
+# unaligned_cache: byte_offset = 96  (96 & 63 = 32)  → lead_bytes = 32
+#
+# Before the optimization both paths run the same code.  After, the unaligned
+# case backs src up 32 bytes to a cache-line boundary; the aligned case is
+# unchanged.  Compare the two to quantify the alignment benefit.
+
+
+@parameter
+fn bench_invert_cache_aligned(mut b: Bencher, size: Int) raises:
+    """Invert with a byte_offset that is already 64-byte aligned (lead_bytes=0)."""
+    # 128-byte = 1024-bit offset → byte_offset=128, 128 & 63 == 0, no lead bytes.
+    var bm = _make_alternating(size + 2048).slice(128 << 3, size)
+
+    @always_inline
+    @parameter
+    fn call_fn() raises:
+        var r = ~bm
+        keep(r._length)
+
+    b.iter[call_fn]()
+
+
+@parameter
+fn bench_invert_cache_unaligned(mut b: Bencher, size: Int) raises:
+    """Invert with a byte_offset that is NOT 64-byte aligned (lead_bytes=32)."""
+    # 96-byte = 768-bit offset → byte_offset=96, 96 & 63 == 32, lead_bytes=32.
+    var bm = _make_alternating(size + 2048).slice(96 << 3, size)
+
+    @always_inline
+    @parameter
+    fn call_fn() raises:
+        var r = ~bm
+        keep(r._length)
+
+    b.iter[call_fn]()
+
+
+@parameter
+fn bench_and_cache_unaligned(mut b: Bencher, size: Int) raises:
+    """AND of two bitmaps both at byte_offset=96 (lead_bytes=32, same shift)."""
+    var a = _make_half_set(size + 2048).slice(96 << 3, size)
+    var bm = _make_alternating(size + 2048).slice(96 << 3, size)
+
+    @always_inline
+    @parameter
+    fn call_fn() raises:
+        var r = a & bm
+        keep(r._length)
+
+    b.iter[call_fn]()
+
+
+# ---------------------------------------------------------------------------
 # Non-aligned benchmarks: same-shift vs different-shift code paths
 # ---------------------------------------------------------------------------
 #
@@ -221,6 +281,27 @@ def main() raises:
     comptime for si in range(5):
         m.bench_with_input[Int, bench_and_diff_offset](
             BenchId("and_diff_offset", labels[si]),
+            sizes[si],
+            [ThroughputMeasure(BenchMetric.elements, sizes[si])],
+        )
+
+    comptime for si in range(5):
+        m.bench_with_input[Int, bench_invert_cache_aligned](
+            BenchId("invert_cache_aligned", labels[si]),
+            sizes[si],
+            [ThroughputMeasure(BenchMetric.elements, sizes[si])],
+        )
+
+    comptime for si in range(5):
+        m.bench_with_input[Int, bench_invert_cache_unaligned](
+            BenchId("invert_cache_unaligned", labels[si]),
+            sizes[si],
+            [ThroughputMeasure(BenchMetric.elements, sizes[si])],
+        )
+
+    comptime for si in range(5):
+        m.bench_with_input[Int, bench_and_cache_unaligned](
+            BenchId("and_cache_unaligned", labels[si]),
             sizes[si],
             [ThroughputMeasure(BenchMetric.elements, sizes[si])],
         )

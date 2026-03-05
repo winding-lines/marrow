@@ -506,5 +506,47 @@ def test_invert_with_offset():
     assert_true(inv.is_valid(7))
 
 
+def test_invert_large_byte_offset():
+    """__invert__ with byte_offset > 63: exercises the lead_bytes > 0 code path."""
+    # 600-bit source; slice at bit 576 → byte_offset=72, lead_bytes=8, shift=0.
+    # Set bits 577 and 578 of the full bitmap (slice indices 1 and 2).
+    var full = _make(600, [577, 578])
+    var s = full.slice(576, 24)
+    assert_false(s.is_valid(0))
+    assert_true(s.is_valid(1))
+    assert_true(s.is_valid(2))
+    var inv = ~s
+    assert_equal(len(inv), 24)
+    assert_true(inv.is_valid(0))
+    assert_false(inv.is_valid(1))
+    assert_false(inv.is_valid(2))
+    for i in range(3, 24):
+        assert_true(inv.is_valid(i))
+    assert_equal(inv.count_set_bits(), 22)
+
+
+def test_invert_large_byte_offset_with_shift():
+    """__invert__ with large byte_offset AND non-zero sub-byte shift."""
+    # Slice at bit 577 → byte_offset=72, shift=1, lead_bytes=8.
+    # full bits 577, 578, 580 set → slice indices 0, 1, 3 set.
+    var full = _make(600, [577, 578, 580])
+    var s = full.slice(577, 8)
+    assert_true(s.is_valid(0))
+    assert_true(s.is_valid(1))
+    assert_false(s.is_valid(2))
+    assert_true(s.is_valid(3))
+    var inv = ~s
+    assert_equal(len(inv), 8)
+    assert_false(inv.is_valid(0))
+    assert_false(inv.is_valid(1))
+    assert_true(inv.is_valid(2))
+    assert_false(inv.is_valid(3))
+    assert_true(inv.is_valid(4))
+    assert_true(inv.is_valid(5))
+    assert_true(inv.is_valid(6))
+    assert_true(inv.is_valid(7))
+    assert_equal(inv.count_set_bits(), 5)
+
+
 def main():
     TestSuite.discover_tests[__functions_in_module()]().run()
