@@ -27,3 +27,4 @@ mojo = ">=0.26.2.0.dev2026030405,<0.27"
 
 [pypi-dependencies]
 pyarrow = ">=23.0.0, <24"
+polars = ">=1.0.0"

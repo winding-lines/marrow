@@ -73,6 +73,34 @@ fn bench_count_set_bits(mut b: Bencher, size: Int) raises:
 
 
 @parameter
+fn bench_count_set_bits_aligned(mut b: Bencher, size: Int) raises:
+    """count_set_bits with byte_offset=128 (64-byte aligned, lead_bytes=0)."""
+    var bm = _make_alternating(size + 2048).slice(128 << 3, size)
+
+    @always_inline
+    @parameter
+    fn call_fn():
+        var n = bm.count_set_bits()
+        keep(n)
+
+    b.iter[call_fn]()
+
+
+@parameter
+fn bench_count_set_bits_unaligned(mut b: Bencher, size: Int) raises:
+    """count_set_bits with byte_offset=96 (NOT 64-byte aligned, lead_bytes=32)."""
+    var bm = _make_alternating(size + 2048).slice(96 << 3, size)
+
+    @always_inline
+    @parameter
+    fn call_fn():
+        var n = bm.count_set_bits()
+        keep(n)
+
+    b.iter[call_fn]()
+
+
+@parameter
 fn bench_and(mut b: Bencher, size: Int) raises:
     var a = _make_half_set(size)
     var bm = _make_alternating(size)
@@ -233,73 +261,87 @@ fn bench_and_diff_offset(mut b: Bencher, size: Int) raises:
 def main() raises:
     var m = Bench(BenchConfig(num_repetitions=3))
 
-    comptime sizes = (1_000, 10_000, 100_000, 1_000_000, 10_000_000)
-    comptime labels = ("1k", "10k", "100k", "1M", "10M")
+    comptime sizes = (1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000)
+    comptime labels = ("1k", "10k", "100k", "1M", "10M", "100M")
 
-    comptime for si in range(5):
+    comptime for si in range(6):
         m.bench_with_input[Int, bench_count_set_bits](
             BenchId("count_set_bits", labels[si]),
             sizes[si],
             [ThroughputMeasure(BenchMetric.elements, sizes[si])],
         )
 
-    comptime for si in range(5):
+    comptime for si in range(6):
+        m.bench_with_input[Int, bench_count_set_bits_aligned](
+            BenchId("count_set_bits_aligned", labels[si]),
+            sizes[si],
+            [ThroughputMeasure(BenchMetric.elements, sizes[si])],
+        )
+
+    comptime for si in range(6):
+        m.bench_with_input[Int, bench_count_set_bits_unaligned](
+            BenchId("count_set_bits_unaligned", labels[si]),
+            sizes[si],
+            [ThroughputMeasure(BenchMetric.elements, sizes[si])],
+        )
+
+    comptime for si in range(6):
         m.bench_with_input[Int, bench_and](
             BenchId("bitmap_and", labels[si]),
             sizes[si],
             [ThroughputMeasure(BenchMetric.elements, sizes[si])],
         )
 
-    comptime for si in range(5):
+    comptime for si in range(6):
         m.bench_with_input[Int, bench_or](
             BenchId("bitmap_or", labels[si]),
             sizes[si],
             [ThroughputMeasure(BenchMetric.elements, sizes[si])],
         )
 
-    comptime for si in range(5):
+    comptime for si in range(6):
         m.bench_with_input[Int, bench_invert](
             BenchId("bitmap_invert", labels[si]),
             sizes[si],
             [ThroughputMeasure(BenchMetric.elements, sizes[si])],
         )
 
-    comptime for si in range(5):
+    comptime for si in range(6):
         m.bench_with_input[Int, bench_set_range](
             BenchId("set_range", labels[si]),
             sizes[si],
             [ThroughputMeasure(BenchMetric.elements, sizes[si])],
         )
 
-    comptime for si in range(5):
+    comptime for si in range(6):
         m.bench_with_input[Int, bench_and_same_offset](
             BenchId("and_same_offset", labels[si]),
             sizes[si],
             [ThroughputMeasure(BenchMetric.elements, sizes[si])],
         )
 
-    comptime for si in range(5):
+    comptime for si in range(6):
         m.bench_with_input[Int, bench_and_diff_offset](
             BenchId("and_diff_offset", labels[si]),
             sizes[si],
             [ThroughputMeasure(BenchMetric.elements, sizes[si])],
         )
 
-    comptime for si in range(5):
+    comptime for si in range(6):
         m.bench_with_input[Int, bench_invert_cache_aligned](
             BenchId("invert_cache_aligned", labels[si]),
             sizes[si],
             [ThroughputMeasure(BenchMetric.elements, sizes[si])],
         )
 
-    comptime for si in range(5):
+    comptime for si in range(6):
         m.bench_with_input[Int, bench_invert_cache_unaligned](
             BenchId("invert_cache_unaligned", labels[si]),
             sizes[si],
             [ThroughputMeasure(BenchMetric.elements, sizes[si])],
         )
 
-    comptime for si in range(5):
+    comptime for si in range(6):
         m.bench_with_input[Int, bench_and_cache_unaligned](
             BenchId("and_cache_unaligned", labels[si]),
             sizes[si],

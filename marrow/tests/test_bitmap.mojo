@@ -18,6 +18,15 @@ fn _make(n_bits: Int, set_bits: List[Int]) -> Bitmap:
     return b.finish(n_bits)
 
 
+fn _count_naive(bm: Bitmap) -> Int:
+    """Reference popcount: walks every bit via is_valid."""
+    var n = 0
+    for i in range(len(bm)):
+        if bm.is_valid(i):
+            n += 1
+    return n
+
+
 # ---------------------------------------------------------------------------
 # BitmapBuilder
 # ---------------------------------------------------------------------------
@@ -291,6 +300,130 @@ def test_count_set_bits_small_slice_in_large_bitmap():
     # Slice at bit 1003 (byte 125, shift 3), length 5.
     var sliced = full.slice(1003, 5)
     assert_equal(sliced.count_set_bits(), 5)
+
+
+def test_count_set_bits_vs_naive_all_patterns():
+    """Compare count_set_bits against _count_naive across sizes and offsets.
+
+    Covers:
+      - sizes that are sub-word, exactly one Tier-2 block, straddle a
+        Tier-1 boundary, and large enough to exercise multiple Tier-1 blocks
+      - offsets 0 (byte-aligned), 32 (64-byte-unaligned), 128 (64-byte-aligned)
+      - three fill patterns: all-zeros, all-ones, alternating
+    """
+    comptime sizes = (1, 7, 13, 63, 64, 65, 127, 512, 513, 1023, 1024, 4097, 10000)
+    comptime offsets = (0, 3, 7, 32 << 3, 96 << 3, 128 << 3, 65 * 8 + 3, 96 * 8 + 5)
+
+    comptime for si in range(len(sizes)):
+        comptime size = sizes[si]
+        comptime for oi in range(len(offsets)):
+            comptime offset = offsets[oi]
+            comptime total = size + offset
+
+            # all-zeros
+            var bz = BitmapBuilder.alloc(total)
+            var fz = bz.finish(total)
+            var sz = fz.slice(offset, size)
+            assert_equal(sz.count_set_bits(), _count_naive(sz))
+
+            # all-ones
+            var bo = BitmapBuilder.alloc(total)
+            bo.set_range(0, total, True)
+            var fo = bo.finish(total)
+            var so = fo.slice(offset, size)
+            assert_equal(so.count_set_bits(), _count_naive(so))
+
+            # alternating (even bits set)
+            var ba = BitmapBuilder.alloc(total)
+            var k = 0
+            while k < total:
+                ba.set_bit(k, True)
+                k += 2
+            var fa = ba.finish(total)
+            var sa = fa.slice(offset, size)
+            assert_equal(sa.count_set_bits(), _count_naive(sa))
+
+
+def test_count_set_bits_interior_slices():
+    """count_set_bits on slices that end BEFORE the buffer end.
+
+    The aligned range includes trailing bytes with real data from the larger
+    buffer, exercising the trail_bytes correction in trail_bits.
+    The leading bytes before the slice also contain real data, exercising
+    the lead_bytes correction.
+    """
+    comptime sizes = (1, 7, 13, 63, 64, 65, 127, 512, 513, 1023, 1024)
+    comptime offsets = (0, 3, 7, 32 << 3, 96 << 3, 128 << 3, 65 * 8 + 3, 96 * 8 + 5)
+    # Extra bits after the slice window to ensure non-zero trailing bytes.
+    comptime extra = 512
+
+    comptime for si in range(len(sizes)):
+        comptime size = sizes[si]
+        comptime for oi in range(len(offsets)):
+            comptime offset = offsets[oi]
+            comptime total = size + offset + extra
+
+            # all-zeros
+            var bz = BitmapBuilder.alloc(total)
+            var fz = bz.finish(total)
+            var sz = fz.slice(offset, size)
+            assert_equal(sz.count_set_bits(), _count_naive(sz))
+
+            # all-ones: trailing bytes contain 1s, must be subtracted
+            var bo = BitmapBuilder.alloc(total)
+            bo.set_range(0, total, True)
+            var fo = bo.finish(total)
+            var so = fo.slice(offset, size)
+            assert_equal(so.count_set_bits(), _count_naive(so))
+
+            # alternating (even bits set)
+            var ba = BitmapBuilder.alloc(total)
+            var k = 0
+            while k < total:
+                ba.set_bit(k, True)
+                k += 2
+            var fa = ba.finish(total)
+            var sa = fa.slice(offset, size)
+            assert_equal(sa.count_set_bits(), _count_naive(sa))
+
+
+def test_count_set_bits_trail_bits_exact_boundary():
+    """trail_bits == 0 when bit_end lands exactly on a 64-byte boundary."""
+    # 512 bits = 64 bytes, exact fit: no lead or trail correction needed.
+    var b = BitmapBuilder.alloc(512)
+    b.set_range(0, 512, True)
+    var bm = b.finish(512)
+    assert_equal(bm.count_set_bits(), 512)
+    # Slice ending exactly at byte 64 within a larger buffer.
+    var large = BitmapBuilder.alloc(1024)
+    large.set_range(0, 1024, True)
+    var fl = large.finish(1024)
+    var s = fl.slice(0, 512)
+    assert_equal(s.count_set_bits(), 512)
+
+
+def test_count_set_bits_trail_bytes_only():
+    """trail_bytes > 0, trail_sub_byte == 0: byte-aligned end, non-zero trailing bytes."""
+    # Slice of 8 bits (1 byte) at offset 0 in a large all-ones bitmap.
+    # byte_end=1, aligned_end=64, trail_bytes=63, trail_sub_byte=0.
+    var full = BitmapBuilder.alloc(1000)
+    full.set_range(0, 1000, True)
+    var bm = full.finish(1000)
+    var s = bm.slice(0, 8)
+    assert_equal(s.count_set_bits(), 8)
+
+
+def test_count_set_bits_lead_and_trail_bytes_nonzero():
+    """Both lead_bytes > 0 and trail_bytes > 0, with real data in both regions."""
+    # Slice [520, 530) inside a 1000-bit all-ones bitmap.
+    # offset=520: byte 65, bit 0 → aligned_start=64, lead_bytes=1, in_byte_bits=0.
+    # bit_end=530: byte_end=67, aligned_end=128, trail_bytes=61, trail_sub_byte=2.
+    var full = BitmapBuilder.alloc(1000)
+    full.set_range(0, 1000, True)
+    var bm = full.finish(1000)
+    var s = bm.slice(520, 10)
+    assert_equal(s.count_set_bits(), 10)
+    assert_equal(s.count_set_bits(), _count_naive(s))
 
 
 # ---------------------------------------------------------------------------

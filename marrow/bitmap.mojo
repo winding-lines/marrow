@@ -54,9 +54,45 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
         return self._length
 
     @always_inline
+    fn bit_offset(self) -> Int:
+        """Return the bit offset into the backing buffer."""
+        return self._offset
+
+    @always_inline
+    fn _aligned_byte_range(
+        self,
+    ) -> Tuple[UnsafePointer[UInt8, ImmutExternalOrigin], Int, Int, Int]:
+        """Return 64-byte-aligned pointer and byte range with boundary bits.
+
+        Returns (ptr, total_bytes, lead_bits, trail_bits):
+          ptr:         buffer pointer backed up to the 64-byte boundary
+          total_bytes: aligned_end - aligned_start (multiple of 64)
+          lead_bits:   bit offset from aligned_start to first data bit
+                       (lead_bytes*8 + sub-byte offset, range 0-511)
+          trail_bits:  bit offset from last data bit to aligned_end
+                       (trail_bytes*8 + sub-byte remainder, 0 = exact fit)
+
+        Arrow buffers are 64-byte aligned and zero-padded, so reading the
+        full [ptr, ptr + total_bytes) range is always safe.
+        """
+        var byte_start = self._offset >> 3
+        var bit_end = self._offset + self._length
+        var byte_end = (bit_end + 7) >> 3
+        var aligned_start = math.align_down(byte_start, 64)
+        var aligned_end = math.align_up(byte_end, 64)
+        var lead_bits = self._offset - (aligned_start << 3)
+        var trail_bits = (aligned_end - byte_end) * 8 + (bit_end & 7)
+        return Tuple(
+            self._buffer.unsafe_ptr() + aligned_start,
+            aligned_end - aligned_start,
+            lead_bits,
+            trail_bits,
+        )
+
+    @always_inline
     fn is_valid(self, index: Int) -> Bool:
         """Return True if bit at (_offset + index) is set (value is valid)."""
-        var bit_index = self._offset + index
+        var bit_index = self.bit_offset() + index
         return Bool((self._buffer.ptr[bit_index >> 3] >> UInt8(bit_index & 7)) & 1)
 
     @always_inline
@@ -67,60 +103,62 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
     fn count_set_bits(self) -> Int:
         """Count set bits in [_offset, _offset + _length) using SIMD popcount.
 
-        Uses lead/trail corrections for boundary bytes so no zero-padding
-        invariant is required — works correctly regardless of what lies in
-        the buffer outside the bitmap's view.
+        Tier 1: 512-byte blocks with 2 interleaved uint8 accumulators.
+        Tier 2: 64-byte blocks for the remainder.
+        Lead/trail corrections subtract bits outside the bitmap's logical range.
         """
+        comptime width = simd_width_of[DType.uint8]()
+        comptime t1_iters = 512 // width // 2
+        comptime t1_bytes = 512
+        comptime t2_iters = 64 // width
+
         if self._length == 0:
             return 0
-        comptime width = simd_width_of[DType.uint8]()
-        var ptr = self._buffer.unsafe_ptr()
-        var bit_start = self._offset
-        var bit_end = self._offset + self._length
-        var byte_start = bit_start >> 3
-        var byte_end = bit_end >> 3
-        var lead = bit_start & 7
-        var trail = bit_end & 7
-        var byte_end_ceil = byte_end + Int(trail != 0)
-        # 2 interleaved accumulators, each 128-bit (1 NEON register).
-        # 31 iters/acc: 31×8=248 ≤ 255 per lane ✓.  992 bytes per drain block.
-        comptime drain_iters = 31  # per accumulator
-        comptime drain_bytes = drain_iters * 2 * width  # 31 × 2 × 16 = 992
-        var drain_end = byte_start + ((byte_end_ceil - byte_start) // drain_bytes) * drain_bytes
+
+        ptr, total_bytes, lead_bits, trail_bits = self._aligned_byte_range()
+
+        # Tier 1: 512-byte blocks, 2 interleaved uint8 accumulators.
+        # NEON: 16 iters/acc, max 128/lane ≤ 255 ✓ (cast to uint16 before sum).
+        var t1_end = (total_bytes // t1_bytes) * t1_bytes
         var count = 0
-        for i in range(byte_start, drain_end, drain_bytes):
+        for i in range(0, t1_end, t1_bytes):
             var acc0 = SIMD[DType.uint8, width](0)
             var acc1 = SIMD[DType.uint8, width](0)
-            comptime for j in range(drain_iters):
+            comptime for j in range(t1_iters):
                 acc0 += pop_count((ptr + i + (j * 2) * width).load[width=width]())
                 acc1 += pop_count((ptr + i + (j * 2 + 1) * width).load[width=width]())
-            count += Int((acc0 + acc1).cast[DType.uint16]().reduce_add())
-        # Tier 2: tail < 1488 bytes — unrolled single-acc, 30 iters (30×8=240 ≤ 255 ✓)
-        comptime t2_iters = 30
-        comptime t2_bytes = t2_iters * width  # 30 × 16 = 480
-        var t2_end = drain_end + ((byte_end_ceil - drain_end) // t2_bytes) * t2_bytes
-        for i in range(drain_end, t2_end, t2_bytes):
+            count += Int((acc0.cast[DType.uint16]() + acc1.cast[DType.uint16]()).reduce_add())
+
+        # Tier 2: 64-byte blocks for the remainder.
+        # NEON: 4 iters, max 32/lane ≤ 255 ✓.
+        for i in range(t1_end, total_bytes, 64):
             var acc = SIMD[DType.uint8, width](0)
             comptime for j in range(t2_iters):
                 acc += pop_count((ptr + i + j * width).load[width=width]())
             count += Int(acc.cast[DType.uint16]().reduce_add())
-        # Tier 3: < 480 bytes — non-unrolled, at most 29 chunks (29×8=232 ≤ 255 ✓)
-        var simd_end = t2_end + ((byte_end_ceil - t2_end) // width) * width
-        var tail_acc = SIMD[DType.uint8, width](0)
-        for i in range(t2_end, simd_end, width):
-            tail_acc += pop_count((ptr + i).load[width=width]())
-        count += Int(tail_acc.cast[DType.uint16]().reduce_add())
-        for i in range(simd_end, byte_end_ceil):
-            count += Int(pop_count(ptr[i]))
-        if lead != 0:
-            count -= Int(pop_count(ptr[byte_start] & UInt8((1 << lead) - 1)))
-        if trail != 0:
-            count -= Int(pop_count(ptr[byte_end] >> UInt8(trail)))
+
+        # Subtract bits outside [_offset, _offset + _length).
+        if lead_bits:
+            var lead_bytes = lead_bits >> 3
+            var lead_sub_byte = lead_bits & 7
+            for i in range(lead_bytes):
+                count -= Int(pop_count(ptr[i]))
+            if lead_sub_byte:
+                count -= Int(pop_count(ptr[lead_bytes] & UInt8((1 << lead_sub_byte) - 1)))
+        if trail_bits:
+            var trail_bytes = trail_bits >> 3
+            var trail_sub_byte = trail_bits & 7
+            var first_trail = total_bytes - trail_bytes
+            if trail_sub_byte:
+                count -= Int(pop_count(ptr[first_trail - 1] >> UInt8(trail_sub_byte)))
+            for i in range(first_trail, total_bytes):
+                count -= Int(pop_count(ptr[i]))
+
         return count
 
     fn slice(self, offset: Int, length: Int) -> Bitmap:
         """Return a zero-copy view of `length` bits starting at `offset`."""
-        return Bitmap(self._buffer, self._offset + offset, length)
+        return Bitmap(self._buffer, self.bit_offset() + offset, length)
 
 
     # --- Bulk SIMD operations ---
@@ -147,35 +185,21 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
         return self._binop[_xor](other)
 
     fn __invert__(self) -> Bitmap:
-        """Return the bitwise NOT of this bitmap.
-
-        Operates over the cache-line-aligned byte range from `_simd_byte_offset_range`,
-        so every SIMD load/store is aligned and the loop terminates exactly on a
-        64-byte boundary with no overshoot.  The result carries
-        `_offset = lead_bytes * 8 + (self._offset & 7)` where `lead_bytes` is
-        the byte distance from the aligned start to the bitmap's first byte.
-        """
+        """Return the bitwise NOT of this bitmap."""
         comptime width = simd_width_of[DType.uint8]()
         comptime assert 64 % width == 0
         comptime unroll = 64 // width
 
-        # Arrow guarantees buffers are 64-byte aligned and zero-padded, so reading
-        # outside [_offset, _offset+_length) is safe.  Rounding to 64-byte multiples
-        # lets the SIMD loop (step=64) cover everything exactly with no tail.
-        var start = math.align_down(self._offset >> 3, 64)
-        var end = math.align_up(math.ceildiv(self._offset + self._length, 8), 64)
-        var total_bytes = end - start
-        var builder = BufferBuilder.alloc_uninit(total_bytes)
+        src, total_bytes, lead_bits, _ = self._aligned_byte_range()
 
-        var src = self._buffer.unsafe_ptr() + start
+        var builder = BufferBuilder.alloc_uninit(total_bytes)
         var dst = builder.unsafe_ptr()
         for i in range(0, total_bytes, 64):
             comptime for j in range(unroll):
                 comptime k = j * width
                 (dst + i + k).store(~(src + i + k).load[width=width]())
 
-        var new_bit_offset = self._offset - (start << 3)
-        return Bitmap(builder.finish(), new_bit_offset, self._length)
+        return Bitmap(builder.finish(), lead_bits, self._length)
 
     fn and_not(self, other: Bitmap) raises -> Bitmap:
         """Return self & ~other  (A AND NOT B).
@@ -190,71 +214,29 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
     fn _binop[
         op: fn[W: Int](SIMD[DType.uint8, W], SIMD[DType.uint8, W]) -> SIMD[DType.uint8, W]
     ](self, other: Bitmap) raises -> Bitmap:
-        """Apply a byte-level binary operation across two bitmaps, returning a new Bitmap.
+        """Apply a byte-level binary operation across two bitmaps.
 
-        Two code paths based on sub-byte alignment (`_offset & 7`):
+        Two code paths based on sub-byte alignment:
+        - Same sub-byte offset: direct SIMD op, no bit shifting.
+        - Different sub-byte offset: `other` is bit-shifted to align with `self`
+          via overlapping loads: `(lo >> delta) | (hi << (8 - delta))`.
 
-        Same sub-byte offset (includes both-zero): direct SIMD op on
-        corresponding bytes, no bit shifting needed.
-
-        Different sub-byte offset: only `other` is bit-shifted to align
-        with `self` via overlapping loads: `(lo >> delta) | (hi << (8 - delta))`.
-
-        Cache-line alignment
-        --------------------
-        `src_a` is backed up to its previous 64-byte boundary (`lead_a = byte_a & 63`)
-        so that `src_a` and `dst` are cache-line aligned.  `src_b` is shifted by the
-        same `lead_a` bytes to maintain byte correspondence — it may not be aligned
-        itself, but aligning 2 of 3 memory streams (src_a reads + dst writes) avoids
-        the majority of cache-line splits.  This yields ~10% throughput gain at L2/L3
-        sizes (1M bits) where alignment matters most; at 10M+ the workload is
-        memory-bandwidth bound and alignment has negligible effect.
-
-        Arrow buffers are 64-byte aligned at their base and zero-padded to 64-byte
-        multiples, so backing up src_a and overreading at the tail are always safe.
-
-        The result carries `new_bit_offset = lead_a * 8 + shift_a` to account for
-        the extra leading bytes in the output buffer.
+        src_a is backed up to its 64-byte boundary so src_a and dst are
+        cache-line aligned.  src_b is shifted by the same lead byte offset to
+        maintain byte correspondence.
         """
-        # width ∈ {16,32,64} bytes; all divide 64, so SIMD loops over
-        # 64-byte-aligned ranges terminate exactly with no remainder.
         comptime width = simd_width_of[DType.uint8]()
         comptime assert 64 % width == 0
         comptime unroll = 64 // width
 
-        # Sub-byte bit offset within the first byte of each operand.
-        # Only values 0-7; the byte-level position is handled by the
-        # pointer arithmetic below.
-        var shift_a = self._offset & 7
-        var shift_b = other._offset & 7
-        var byte_a = self._offset >> 3
-        var byte_b = other._offset >> 3
+        src_a, total_bytes, lead_bits_a, _ = self._aligned_byte_range()
+        ptr_b, _, lead_bits_b, _ = other._aligned_byte_range()
 
-        # Back src_a up to its previous 64-byte (cache-line) boundary.
-        # This makes src_a and dst aligned.  src_b is shifted by the
-        # same lead_a bytes so that src_a[i] and src_b[i] still refer
-        # to corresponding bitmap bytes.  src_b may not be cache-line
-        # aligned itself, but we can only align both when
-        # byte_a % 64 == byte_b % 64 — so we settle for 2 of 3 streams.
-        var lead_a = byte_a & 63
-        var src_a = self._buffer.unsafe_ptr() + (byte_a - lead_a)
-        var src_b = other._buffer.unsafe_ptr() + (byte_b - lead_a)
-
-        # total_bytes includes the lead_a prefix and is rounded up to a
-        # 64-byte multiple so the SIMD loop terminates exactly.
-        # alloc_uninit skips memset_zero — safe because every byte is
-        # written by the SIMD loop before the buffer is read.
-        var total_bytes = math.align_up(lead_a + math.ceildiv(self._length + shift_a, 8), 64)
+        var src_b = ptr_b + ((lead_bits_b >> 3) - (lead_bits_a >> 3))
         var builder = BufferBuilder.alloc_uninit(total_bytes)
         var dst = builder.unsafe_ptr()
 
-        # The output buffer has lead_a extra bytes at the front, so the
-        # result's bit offset must account for them.
-        var new_bit_offset = lead_a * 8 + shift_a
-
-        if shift_a == shift_b:
-            # Fast path: both operands share the same sub-byte alignment,
-            # so bytes correspond 1:1 and we can apply the op directly.
+        if lead_bits_a & 7 == lead_bits_b & 7:
             for i in range(0, total_bytes, 64):
                 comptime for j in range(unroll):
                     comptime k = j * width
@@ -265,11 +247,9 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
                         )
                     )
         else:
-            # Shift path: sub-byte offsets differ.  Only other is shifted
-            # to align with self via overlapping loads.
-            var delta = (shift_b - shift_a) & 7
-            var rs = UInt8(delta)
-            var ls = UInt8(8 - delta)
+            var in_byte_shift = (lead_bits_b - lead_bits_a) & 7
+            var rs = UInt8(in_byte_shift)
+            var ls = UInt8(8 - in_byte_shift)
             for i in range(0, total_bytes, 64):
                 comptime for j in range(unroll):
                     comptime k = j * width
@@ -278,12 +258,12 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
                     var hi = (src_b + i + k + 1).load[width=width]()
                     (dst + i + k).store(op(a, (lo >> rs) | (hi << ls)))
 
-        return Bitmap(builder.finish(), new_bit_offset, self._length)
+        return Bitmap(builder.finish(), lead_bits_a, self._length)
 
 
     fn write_to[W: Writer](self, mut writer: W):
         writer.write(
-            "Bitmap(offset=", self._offset, ", length=", self._length, ")"
+            "Bitmap(offset=", self.bit_offset(), ", length=", self._length, ")"
         )
 
 
