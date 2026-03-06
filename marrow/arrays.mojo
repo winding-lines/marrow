@@ -253,7 +253,11 @@ struct PrimitiveArray[T: DataType](Movable, Sized, Writable):
         """Upload array data to the GPU."""
         var bm: Optional[Bitmap] = None
         if self.bitmap:
-            bm = Bitmap(self.bitmap.value()._buffer.to_device(ctx), 0, self.bitmap.value()._length)
+            bm = Bitmap(
+                self.bitmap.value()._buffer.to_device(ctx),
+                0,
+                self.bitmap.value()._length,
+            )
         return PrimitiveArray[Self.T](
             length=self.length,
             nulls=self.nulls,
@@ -266,7 +270,11 @@ struct PrimitiveArray[T: DataType](Movable, Sized, Writable):
         """Download array data from the GPU to owned CPU heap buffers."""
         var bm: Optional[Bitmap] = None
         if self.bitmap:
-            bm = Bitmap(self.bitmap.value()._buffer.to_cpu(ctx), 0, self.bitmap.value()._length)
+            bm = Bitmap(
+                self.bitmap.value()._buffer.to_cpu(ctx),
+                0,
+                self.bitmap.value()._length,
+            )
         return PrimitiveArray[Self.T](
             length=self.length,
             nulls=self.nulls,

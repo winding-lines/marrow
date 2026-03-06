@@ -518,7 +518,8 @@ def test_fixed_size_list_with_nulls():
 
 
 def test_fixed_size_list_unsafe_get_dtype():
-    """unsafe_get returns a slice with the child element dtype, not the list dtype."""
+    """unsafe_get returns a slice with the child element dtype, not the list dtype.
+    """
     var ints_b = PrimitiveBuilder[int32](4)
     ints_b.append(10)
     ints_b.append(20)

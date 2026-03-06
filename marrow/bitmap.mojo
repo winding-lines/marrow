@@ -93,7 +93,9 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
     fn is_valid(self, index: Int) -> Bool:
         """Return True if bit at (_offset + index) is set (value is valid)."""
         var bit_index = self.bit_offset() + index
-        return Bool((self._buffer.ptr[bit_index >> 3] >> UInt8(bit_index & 7)) & 1)
+        return Bool(
+            (self._buffer.ptr[bit_index >> 3] >> UInt8(bit_index & 7)) & 1
+        )
 
     @always_inline
     fn is_null(self, index: Int) -> Bool:
@@ -125,9 +127,17 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
             var acc0 = SIMD[DType.uint8, width](0)
             var acc1 = SIMD[DType.uint8, width](0)
             comptime for j in range(t1_iters):
-                acc0 += pop_count((ptr + i + (j * 2) * width).load[width=width]())
-                acc1 += pop_count((ptr + i + (j * 2 + 1) * width).load[width=width]())
-            count += Int((acc0.cast[DType.uint16]() + acc1.cast[DType.uint16]()).reduce_add())
+                acc0 += pop_count(
+                    (ptr + i + (j * 2) * width).load[width=width]()
+                )
+                acc1 += pop_count(
+                    (ptr + i + (j * 2 + 1) * width).load[width=width]()
+                )
+            count += Int(
+                (
+                    acc0.cast[DType.uint16]() + acc1.cast[DType.uint16]()
+                ).reduce_add()
+            )
 
         # Tier 2: 64-byte blocks for the remainder.
         # NEON: 4 iters, max 32/lane ≤ 255 ✓.
@@ -144,13 +154,17 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
             for i in range(lead_bytes):
                 count -= Int(pop_count(ptr[i]))
             if lead_sub_byte:
-                count -= Int(pop_count(ptr[lead_bytes] & UInt8((1 << lead_sub_byte) - 1)))
+                count -= Int(
+                    pop_count(ptr[lead_bytes] & UInt8((1 << lead_sub_byte) - 1))
+                )
         if trail_bits:
             var trail_bytes = trail_bits >> 3
             var trail_sub_byte = trail_bits & 7
             var first_trail = total_bytes - trail_bytes
             if trail_sub_byte:
-                count -= Int(pop_count(ptr[first_trail - 1] >> UInt8(trail_sub_byte)))
+                count -= Int(
+                    pop_count(ptr[first_trail - 1] >> UInt8(trail_sub_byte))
+                )
             for i in range(first_trail, total_bytes):
                 count -= Int(pop_count(ptr[i]))
 
@@ -159,7 +173,6 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
     fn slice(self, offset: Int, length: Int) -> Bitmap:
         """Return a zero-copy view of `length` bits starting at `offset`."""
         return Bitmap(self._buffer, self.bit_offset() + offset, length)
-
 
     # --- Bulk SIMD operations ---
     #
@@ -212,7 +225,9 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
 
     @always_inline
     fn _binop[
-        op: fn[W: Int](SIMD[DType.uint8, W], SIMD[DType.uint8, W]) -> SIMD[DType.uint8, W]
+        op: fn[W: Int](SIMD[DType.uint8, W], SIMD[DType.uint8, W]) -> SIMD[
+            DType.uint8, W
+        ]
     ](self, other: Bitmap) raises -> Bitmap:
         """Apply a byte-level binary operation across two bitmaps.
 
@@ -260,7 +275,6 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
 
         return Bitmap(builder.finish(), lead_bits_a, self._length)
 
-
     fn write_to[W: Writer](self, mut writer: W):
         writer.write(
             "Bitmap(offset=", self.bit_offset(), ", length=", self._length, ")"
@@ -268,22 +282,30 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
 
 
 @always_inline
-fn _and[W: Int](a: SIMD[DType.uint8, W], b: SIMD[DType.uint8, W]) -> SIMD[DType.uint8, W]:
+fn _and[
+    W: Int
+](a: SIMD[DType.uint8, W], b: SIMD[DType.uint8, W]) -> SIMD[DType.uint8, W]:
     return a & b
 
 
 @always_inline
-fn _or[W: Int](a: SIMD[DType.uint8, W], b: SIMD[DType.uint8, W]) -> SIMD[DType.uint8, W]:
+fn _or[
+    W: Int
+](a: SIMD[DType.uint8, W], b: SIMD[DType.uint8, W]) -> SIMD[DType.uint8, W]:
     return a | b
 
 
 @always_inline
-fn _xor[W: Int](a: SIMD[DType.uint8, W], b: SIMD[DType.uint8, W]) -> SIMD[DType.uint8, W]:
+fn _xor[
+    W: Int
+](a: SIMD[DType.uint8, W], b: SIMD[DType.uint8, W]) -> SIMD[DType.uint8, W]:
     return a ^ b
 
 
 @always_inline
-fn _and_not[W: Int](a: SIMD[DType.uint8, W], b: SIMD[DType.uint8, W]) -> SIMD[DType.uint8, W]:
+fn _and_not[
+    W: Int
+](a: SIMD[DType.uint8, W], b: SIMD[DType.uint8, W]) -> SIMD[DType.uint8, W]:
     return a & ~b
 
 
@@ -317,7 +339,8 @@ struct BitmapBuilder(Movable):
 
     @always_inline
     fn unsafe_ptr(self) -> UnsafePointer[UInt8, MutExternalOrigin]:
-        """Return the raw mutable byte pointer (for low-level bit operations)."""
+        """Return the raw mutable byte pointer (for low-level bit operations).
+        """
         return self._builder.ptr
 
     @always_inline
@@ -344,7 +367,9 @@ struct BitmapBuilder(Movable):
 
         if start_byte == end_byte:
             # All bits in one byte
-            var mask = UInt8((1 << end_bit) - 1) & (UInt8(0xFF) << UInt8(start_bit))
+            var mask = UInt8((1 << end_bit) - 1) & (
+                UInt8(0xFF) << UInt8(start_bit)
+            )
             if value:
                 ptr[start_byte] = ptr[start_byte] | mask
             else:

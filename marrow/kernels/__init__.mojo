@@ -60,7 +60,9 @@ from marrow.dtypes import DataType, all_numeric_dtypes
 # ---------------------------------------------------------------------------
 
 
-fn bitmap_and(a: Optional[Bitmap], b: Optional[Bitmap]) raises -> Optional[Bitmap]:
+fn bitmap_and(
+    a: Optional[Bitmap], b: Optional[Bitmap]
+) raises -> Optional[Bitmap]:
     """Compute the output validity bitmap as the bitwise AND of two input bitmaps.
 
     Output bit i is True iff both a[i] and b[i] are True (valid).
@@ -355,7 +357,9 @@ fn reduce_simd[
     comptime width = simd_byte_width() // size_of[native]()
     var length = len(array)
     var has_nulls = array.bitmap.__bool__()
-    var bp = array.bitmap.value()._buffer.unsafe_ptr() if has_nulls else UnsafePointer[UInt8, ImmutExternalOrigin]()
+    var bp = array.bitmap.value()._buffer.unsafe_ptr() if has_nulls else UnsafePointer[
+        UInt8, ImmutExternalOrigin
+    ]()
 
     var acc = SIMD[native, width](initial)
     var identity_vec = SIMD[native, width](initial)

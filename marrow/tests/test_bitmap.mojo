@@ -280,7 +280,7 @@ def test_count_set_bits_large_offset_none_set():
     """
     # Set bits around but not in the slice window.
     var b = BitmapBuilder.alloc(1000)
-    b.set_range(0, 500, True)    # bits 0-499 set
+    b.set_range(0, 500, True)  # bits 0-499 set
     b.set_range(520, 480, True)  # bits 520-999 set
     var full = b.finish(1000)
     # Slice at bit 500, length 20 → all clear.
@@ -311,8 +311,31 @@ def test_count_set_bits_vs_naive_all_patterns():
       - offsets 0 (byte-aligned), 32 (64-byte-unaligned), 128 (64-byte-aligned)
       - three fill patterns: all-zeros, all-ones, alternating
     """
-    comptime sizes = (1, 7, 13, 63, 64, 65, 127, 512, 513, 1023, 1024, 4097, 10000)
-    comptime offsets = (0, 3, 7, 32 << 3, 96 << 3, 128 << 3, 65 * 8 + 3, 96 * 8 + 5)
+    comptime sizes = (
+        1,
+        7,
+        13,
+        63,
+        64,
+        65,
+        127,
+        512,
+        513,
+        1023,
+        1024,
+        4097,
+        10000,
+    )
+    comptime offsets = (
+        0,
+        3,
+        7,
+        32 << 3,
+        96 << 3,
+        128 << 3,
+        65 * 8 + 3,
+        96 * 8 + 5,
+    )
 
     comptime for si in range(len(sizes)):
         comptime size = sizes[si]
@@ -353,7 +376,16 @@ def test_count_set_bits_interior_slices():
     the lead_bytes correction.
     """
     comptime sizes = (1, 7, 13, 63, 64, 65, 127, 512, 513, 1023, 1024)
-    comptime offsets = (0, 3, 7, 32 << 3, 96 << 3, 128 << 3, 65 * 8 + 3, 96 * 8 + 5)
+    comptime offsets = (
+        0,
+        3,
+        7,
+        32 << 3,
+        96 << 3,
+        128 << 3,
+        65 * 8 + 3,
+        96 * 8 + 5,
+    )
     # Extra bits after the slice window to ensure non-zero trailing bytes.
     comptime extra = 512
 
@@ -414,7 +446,8 @@ def test_count_set_bits_trail_bytes_only():
 
 
 def test_count_set_bits_lead_and_trail_bytes_nonzero():
-    """Both lead_bytes > 0 and trail_bytes > 0, with real data in both regions."""
+    """Both lead_bytes > 0 and trail_bytes > 0, with real data in both regions.
+    """
     # Slice [520, 530) inside a 1000-bit all-ones bitmap.
     # offset=520: byte 65, bit 0 → aligned_start=64, lead_bytes=1, in_byte_bits=0.
     # bit_end=530: byte_end=67, aligned_end=128, trail_bytes=61, trail_sub_byte=2.
@@ -634,7 +667,8 @@ def test_and_not_with_none_mask():
 
 
 def test_and_with_same_nonzero_offset():
-    """Binary ops on sliced bitmaps sharing the same non-zero sub-byte offset."""
+    """Binary ops on sliced bitmaps sharing the same non-zero sub-byte offset.
+    """
     var full = _make(16, [2, 3, 4, 6, 10, 11, 12, 14])
     var a = full.slice(2, 8)  # bits 2-9 of original: [1,1,1,0,1,0,0,0]
     var b = full.slice(2, 8)  # same slice
@@ -645,7 +679,8 @@ def test_and_with_same_nonzero_offset():
 
 
 def test_and_same_shift_fast_path():
-    """Bitmaps with identical non-zero sub-byte offsets use the same-shift SIMD path."""
+    """Bitmaps with identical non-zero sub-byte offsets use the same-shift SIMD path.
+    """
     # Build two 12-bit bitmaps with known patterns; slice both at offset=3
     # so both have sub-byte shift = 3 (same shift, non-zero).
     var fa = _make(16, [3, 5, 7, 9, 11])  # bits 3,5,7,9,11 set
@@ -673,8 +708,8 @@ def test_or_same_shift_fast_path():
     """OR of two sliced bitmaps with same non-zero sub-byte offset."""
     var fa = _make(16, [3, 5])
     var fb = _make(16, [3, 4])
-    var a = fa.slice(3, 5)   # slice indices 0,2 set
-    var b = fb.slice(3, 5)   # slice indices 0,1 set
+    var a = fa.slice(3, 5)  # slice indices 0,2 set
+    var b = fb.slice(3, 5)  # slice indices 0,1 set
     var r = a | b
     assert_equal(len(r), 5)
     assert_true(r.is_valid(0))
@@ -690,8 +725,8 @@ def test_and_different_offsets():
     # fb bits 5,7,9,11,13 set; sliced at offset 5 → shift_b=5, indices 0,2,4,6,8
     var fa = _make(16, [3, 5, 7, 9, 11])
     var fb = _make(16, [5, 7, 9, 11, 13])
-    var a = fa.slice(3, 9)   # shift_a = 3
-    var b = fb.slice(5, 9)   # shift_b = 5
+    var a = fa.slice(3, 9)  # shift_a = 3
+    var b = fb.slice(5, 9)  # shift_b = 5
     var r = a & b
     assert_equal(len(r), 9)
     # AND: both have indices 0,2,4,6,8 set → intersection is 0,2,4,6,8
@@ -703,10 +738,27 @@ def test_and_different_offsets_large_byte_delta():
     """AND where byte-level offsets differ by more than 8 bytes."""
     # Build a large bitmap so we can slice at widely separated positions.
     # Set every even bit in the range we care about.
-    var full = _make(600, [
-        100, 102, 104, 106, 108, 110, 112, 114,
-        500, 502, 504, 506, 508, 510, 512, 514,
-    ])
+    var full = _make(
+        600,
+        [
+            100,
+            102,
+            104,
+            106,
+            108,
+            110,
+            112,
+            114,
+            500,
+            502,
+            504,
+            506,
+            508,
+            510,
+            512,
+            514,
+        ],
+    )
     # a: slice at bit 100 (byte 12, shift 4), 16 bits → indices 0,2,4,6,8,10,12,14 set
     var a = full.slice(100, 16)
     # b: slice at bit 500 (byte 62, shift 4), 16 bits → indices 0,2,4,6,8,10,12,14 set
@@ -746,15 +798,15 @@ def test_or_different_offsets_large_byte_delta():
     var b = full_b.slice(500, 12)  # indices 0,1,2 set
     var r = a | b
     assert_equal(len(r), 12)
-    assert_true(r.is_valid(0))   # set in both
-    assert_true(r.is_valid(1))   # set in b
-    assert_true(r.is_valid(2))   # set in b
+    assert_true(r.is_valid(0))  # set in both
+    assert_true(r.is_valid(1))  # set in b
+    assert_true(r.is_valid(2))  # set in b
     assert_false(r.is_valid(3))
-    assert_true(r.is_valid(4))   # set in a
+    assert_true(r.is_valid(4))  # set in a
     assert_false(r.is_valid(5))
     assert_false(r.is_valid(6))
     assert_false(r.is_valid(7))
-    assert_true(r.is_valid(8))   # set in a
+    assert_true(r.is_valid(8))  # set in a
     assert_false(r.is_valid(9))
     assert_false(r.is_valid(10))
     assert_false(r.is_valid(11))
@@ -765,11 +817,11 @@ def test_xor_different_offsets_large_byte_delta():
     var bits_a = List[Int]()
     var bits_b = List[Int]()
     for i in range(16):
-        bits_a.append(80 + i)   # all set
+        bits_a.append(80 + i)  # all set
         bits_b.append(592 + i)  # all set
     var full_a = _make(700, bits_a)
     var full_b = _make(700, bits_b)
-    var a = full_a.slice(80, 16)   # byte 10, shift 0
+    var a = full_a.slice(80, 16)  # byte 10, shift 0
     var b = full_b.slice(592, 16)  # byte 74, shift 0
     var r = a ^ b
     assert_equal(len(r), 16)

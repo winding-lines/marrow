@@ -485,6 +485,7 @@ struct BufferBuilder(Movable):
 # Buffer — immutable buffer for read-only array data
 # ---------------------------------------------------------------------------
 
+
 # TODO: add assertions to ensure alignment and padding invariants hold
 struct Buffer(ImplicitlyCopyable, Movable, Writable):
     """Immutable contiguous memory region.
@@ -720,5 +721,3 @@ struct Buffer(ImplicitlyCopyable, Movable, Writable):
     fn write_to[W: Writer](self, mut writer: W):
         """Write the buffer's bytes to a Writer."""
         writer.write("Buffer(ptr={}, size={})".format(self.ptr, self.size))
-
-

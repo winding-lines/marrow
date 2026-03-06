@@ -129,7 +129,10 @@ def test_bitmap_range_set():
 
     bitmap.set_range(0, 10, True)
     assert_bitmap_set(
-        bitmap.unsafe_ptr(), n_bits, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "range 0-10"
+        bitmap.unsafe_ptr(),
+        n_bits,
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "range 0-10",
     )
     bitmap.set_range(0, 10, False)
     assert_bitmap_set(bitmap.unsafe_ptr(), n_bits, [], "reset")
@@ -147,7 +150,10 @@ def test_bitmap_range_set():
             _reset(bitmap, n_bits)
             bitmap.set_range(start_bit, 2, True)
             assert_bitmap_set(
-                bitmap.unsafe_ptr(), n_bits, [start_bit, start_bit + 1], "range 2"
+                bitmap.unsafe_ptr(),
+                n_bits,
+                [start_bit, start_bit + 1],
+                "range 2",
             )
 
 

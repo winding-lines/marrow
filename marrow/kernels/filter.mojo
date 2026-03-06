@@ -168,7 +168,11 @@ fn filter[
         # All selected: single bulk copy of data and validity.
         var bm_bytes = math.ceildiv(n, 8)
         if array.bitmap:
-            memcpy(dest=bm.unsafe_ptr(), src=array.bitmap.value()._buffer.unsafe_ptr(), count=bm_bytes)
+            memcpy(
+                dest=bm.unsafe_ptr(),
+                src=array.bitmap.value()._buffer.unsafe_ptr(),
+                count=bm_bytes,
+            )
         else:
             bm.set_range(0, n, True)
         comptime if native == DType.bool:
@@ -189,7 +193,9 @@ fn filter[
         # bulk-copy each run.  Threshold: out_len / n > 0.8 ↔ out_len * 10 > n * 8
         if out_len * 10 > n * 8:
             var has_nulls = array.nulls > 0
-            var src_bm_ptr = array.bitmap.value()._buffer.unsafe_ptr() if has_nulls else UnsafePointer[UInt8, ImmutExternalOrigin]()
+            var src_bm_ptr = array.bitmap.value()._buffer.unsafe_ptr() if has_nulls else UnsafePointer[
+                UInt8, ImmutExternalOrigin
+            ]()
             for word_i in range(word_count):
                 var word = word_ptr[word_i]
                 if word == 0:
@@ -233,7 +239,9 @@ fn filter[
                             var si = run_start + i
                             if Bool((src_bm_ptr[si >> 3] >> UInt8(si & 7)) & 1):
                                 var di = out_idx + i
-                                bm.unsafe_ptr()[di >> 3] |= UInt8(1) << UInt8(di & 7)
+                                bm.unsafe_ptr()[di >> 3] |= UInt8(1) << UInt8(
+                                    di & 7
+                                )
                     else:
                         bm.set_range(out_idx, run_len, True)
                     out_idx += run_len

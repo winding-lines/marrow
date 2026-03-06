@@ -88,7 +88,8 @@ fn bench_count_set_bits_aligned(mut b: Bencher, size: Int) raises:
 
 @parameter
 fn bench_count_set_bits_unaligned(mut b: Bencher, size: Int) raises:
-    """count_set_bits with byte_offset=96 (NOT 64-byte aligned, lead_bytes=32)."""
+    """count_set_bits with byte_offset=96 (NOT 64-byte aligned, lead_bytes=32).
+    """
     var bm = _make_alternating(size + 2048).slice(96 << 3, size)
 
     @always_inline
@@ -171,7 +172,8 @@ fn bench_set_range(mut b: Bencher, size: Int) raises:
 
 @parameter
 fn bench_invert_cache_aligned(mut b: Bencher, size: Int) raises:
-    """Invert with a byte_offset that is already 64-byte aligned (lead_bytes=0)."""
+    """Invert with a byte_offset that is already 64-byte aligned (lead_bytes=0).
+    """
     # 128-byte = 1024-bit offset → byte_offset=128, 128 & 63 == 0, no lead bytes.
     var bm = _make_alternating(size + 2048).slice(128 << 3, size)
 
@@ -225,7 +227,8 @@ fn bench_and_cache_unaligned(mut b: Bencher, size: Int) raises:
 
 @parameter
 fn bench_and_same_offset(mut b: Bencher, size: Int) raises:
-    """AND of two bitmaps sharing the same non-zero sub-byte offset (pure SIMD, no shift)."""
+    """AND of two bitmaps sharing the same non-zero sub-byte offset (pure SIMD, no shift).
+    """
     var a = _make_half_set(size).slice(3, size - 8)
     var bm = _make_alternating(size).slice(3, size - 8)
 
@@ -240,7 +243,8 @@ fn bench_and_same_offset(mut b: Bencher, size: Int) raises:
 
 @parameter
 fn bench_and_diff_offset(mut b: Bencher, size: Int) raises:
-    """AND of two bitmaps with different sub-byte offsets (one-sided shift-combine)."""
+    """AND of two bitmaps with different sub-byte offsets (one-sided shift-combine).
+    """
     var a = _make_half_set(size).slice(3, size - 8)
     var bm = _make_alternating(size).slice(5, size - 8)
 
@@ -261,7 +265,14 @@ fn bench_and_diff_offset(mut b: Bencher, size: Int) raises:
 def main() raises:
     var m = Bench(BenchConfig(num_repetitions=3))
 
-    comptime sizes = (1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000)
+    comptime sizes = (
+        1_000,
+        10_000,
+        100_000,
+        1_000_000,
+        10_000_000,
+        100_000_000,
+    )
     comptime labels = ("1k", "10k", "100k", "1M", "10M", "100M")
 
     comptime for si in range(6):

@@ -187,7 +187,9 @@ fn any_(array: PrimitiveArray[bool_dt]) -> Bool:
     """True if any valid element is True. False if empty or all null."""
     return Bool(
         reduce_simd[
-            bool_dt, combine=_or[DType.bool, _], horizontal=_horizontal_or[DType.bool, _]
+            bool_dt,
+            combine=_or[DType.bool, _],
+            horizontal=_horizontal_or[DType.bool, _],
         ](array, Scalar[DType.bool](False))
     )
 
@@ -196,6 +198,8 @@ fn all_(array: PrimitiveArray[bool_dt]) -> Bool:
     """True if all valid elements are True. True if empty or all null."""
     return Bool(
         reduce_simd[
-            bool_dt, combine=_and[DType.bool, _], horizontal=_horizontal_and[DType.bool, _]
+            bool_dt,
+            combine=_and[DType.bool, _],
+            horizontal=_horizontal_and[DType.bool, _],
         ](array, Scalar[DType.bool](True))
     )
