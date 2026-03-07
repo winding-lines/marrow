@@ -43,8 +43,7 @@ from time import perf_counter_ns
 
 from gpu.host import DeviceContext
 
-from marrow.arrays import PrimitiveArray
-from marrow.builders import PrimitiveBuilder
+from marrow.arrays import PrimitiveArray, arange
 from marrow.dtypes import int32, float32, float64, DataType
 from marrow.kernels.arithmetic import add
 
@@ -52,13 +51,6 @@ from marrow.kernels.arithmetic import add
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-
-fn _make_array[T: DataType](size: Int) raises -> PrimitiveArray[T]:
-    var b = PrimitiveBuilder[T](size)
-    for i in range(size):
-        b.append(Scalar[T.native](i))
-    return b.finish()
 
 
 fn _make_array_with_nulls[T: DataType](size: Int) raises -> PrimitiveArray[T]:
@@ -79,8 +71,8 @@ fn _make_array_with_nulls[T: DataType](size: Int) raises -> PrimitiveArray[T]:
 
 @parameter
 fn bench_add[T: DataType](mut b: Bencher, size: Int) raises:
-    var lhs = _make_array[T](size)
-    var rhs = _make_array[T](size)
+    var lhs = arange[T](0, size)
+    var rhs = arange[T](0, size)
 
     @always_inline
     @parameter
@@ -116,8 +108,8 @@ fn _bench_gpu_add[
     T: DataType
 ](size: Int, iters: Int, ctx: DeviceContext,) raises -> Float64:
     """Returns mean microseconds per kernel dispatch with pre-loaded data."""
-    var lhs = _make_array[T](size).to_device(ctx)
-    var rhs = _make_array[T](size).to_device(ctx)
+    var lhs = arange[T](0, size).to_device(ctx)
+    var rhs = arange[T](0, size).to_device(ctx)
     ctx.synchronize()
 
     # Warmup

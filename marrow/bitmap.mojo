@@ -184,17 +184,14 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
 
     fn __and__(self, other: Bitmap) raises -> Bitmap:
         """Return the bitwise AND of self and other."""
-        debug_assert(self._length == other._length, "Bitmap lengths must match")
         return self._binop[_and](other)
 
     fn __or__(self, other: Bitmap) raises -> Bitmap:
         """Return the bitwise OR of self and other."""
-        debug_assert(self._length == other._length, "Bitmap lengths must match")
         return self._binop[_or](other)
 
     fn __xor__(self, other: Bitmap) raises -> Bitmap:
         """Return the bitwise XOR of self and other."""
-        debug_assert(self._length == other._length, "Bitmap lengths must match")
         return self._binop[_xor](other)
 
     fn __invert__(self) -> Bitmap:
@@ -220,7 +217,6 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
         Useful for null propagation: combine validity where *both* must be valid,
         and exclude elements that are null in `other`.
         """
-        debug_assert(self._length == other._length, "Bitmap lengths must match")
         return self._binop[_and_not](other)
 
     @always_inline
@@ -240,6 +236,8 @@ struct Bitmap(ImplicitlyCopyable, Movable, Sized, Writable):
         cache-line aligned.  src_b is shifted by the same lead byte offset to
         maintain byte correspondence.
         """
+        if self._length != other._length:
+            raise Error("Bitmap lengths must match")
         comptime width = simd_width_of[DType.uint8]()
         comptime assert 64 % width == 0
         comptime unroll = 64 // width
@@ -343,6 +341,7 @@ struct BitmapBuilder(Movable):
         """
         return self._builder.ptr
 
+    # TODO: add safe apis
     @always_inline
     fn set_bit(mut self, index: Int, value: Bool):
         """Set or clear the bit at `index`."""

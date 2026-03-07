@@ -905,5 +905,45 @@ def test_invert_large_byte_offset_with_shift():
     assert_equal(inv.count_set_bits(), 5)
 
 
+def test_and_length_mismatch_raises():
+    var a = _make(8, [0, 2])
+    var b = _make(4, [0, 2])
+    try:
+        _ = a & b
+        assert_true(False, "should have raised")
+    except:
+        pass
+
+
+def test_or_length_mismatch_raises():
+    var a = _make(8, [0, 2])
+    var b = _make(4, [0])
+    try:
+        _ = a | b
+        assert_true(False, "should have raised")
+    except:
+        pass
+
+
+def test_xor_length_mismatch_raises():
+    var a = _make(8, [0, 2])
+    var b = _make(4, [0])
+    try:
+        _ = a ^ b
+        assert_true(False, "should have raised")
+    except:
+        pass
+
+
+def test_and_not_length_mismatch_raises():
+    var a = _make(8, [0, 2])
+    var b = _make(4, [0])
+    try:
+        _ = a.and_not(b)
+        assert_true(False, "should have raised")
+    except:
+        pass
+
+
 def main():
     TestSuite.discover_tests[__functions_in_module()]().run()

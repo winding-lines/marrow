@@ -779,8 +779,8 @@ fn nulls[T: DataType](size: Int) raises -> PrimitiveArray[T]:
 
 
 fn arange[T: DataType](start: Int, end: Int) raises -> PrimitiveArray[T]:
-    """Create an integer array with values [start, end)."""
-    comptime assert T.is_integer(), "arange() only supports integer DataTypes"
+    """Create a numeric array with values [start, end)."""
+    comptime assert T.is_numeric(), "arange() only supports numeric DataTypes"
     var b = PrimitiveBuilder[T](end - start)
     for i in range(start, end):
         b.append(Scalar[T.native](i))

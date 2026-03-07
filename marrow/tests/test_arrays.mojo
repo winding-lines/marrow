@@ -607,9 +607,6 @@ def test_struct_array_unsafe_get():
     assert_equal(int_b.unsafe_get(2), 30)
 
 
-# # # --- ChunkedArray tests ---
-
-
 def test_chunked_array():
     var arrays = List[Array]()
     arrays.append(array[uint8]([0]))
