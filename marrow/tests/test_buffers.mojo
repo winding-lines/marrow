@@ -15,7 +15,7 @@ def assert_bitmap_set(
     n_bits: Int,
     expected_true_pos: List[Int],
     message: StringLiteral,
-) -> None:
+) raises -> None:
     var list_pos = 0
     for i in range(n_bits):
         var expected_value = False
@@ -36,17 +36,17 @@ def assert_bitmap_set(
 
 def is_aligned[
     T: AnyType
-](ptr: UnsafePointer[T, MutAnyOrigin], alignment: Int) -> Bool:
+](ptr: UnsafePointer[T, MutAnyOrigin], alignment: Int) raises -> Bool:
     return (Int(ptr) % alignment) == 0
 
 
-def test_buffer_init():
+def test_buffer_init() raises:
     var b = BufferBuilder.alloc(10)
     assert_equal(b.size, 64)
     assert_true(is_aligned(b.ptr, 64))
 
 
-def test_alloc_bits():
+def test_alloc_bits() raises:
     # 10 bits → ceildiv(10,8)=2 bytes → aligned to 64
     var b1 = BufferBuilder.alloc[DType.bool](10)
     assert_equal(b1.size, 64)
@@ -56,7 +56,7 @@ def test_alloc_bits():
     assert_equal(b2.size, 128)
 
 
-def test_buffer_grow():
+def test_buffer_grow() raises:
     var b = BufferBuilder.alloc(10)
     b.unsafe_set(0, 111)
     assert_equal(b.size, 64)
@@ -68,7 +68,7 @@ def test_buffer_grow():
     assert_equal(b.unsafe_get(0), 111)
 
 
-def test_buffer_set_get():
+def test_buffer_set_get() raises:
     var buf = BufferBuilder.alloc(10)
     assert_equal(buf.size, 64)
 
@@ -88,7 +88,7 @@ def test_buffer_set_get():
     assert_equal(buf.unsafe_get[DType.uint16](1), 44)
 
 
-def test_buffer_swap():
+def test_buffer_swap() raises:
     var one = BufferBuilder.alloc(10)
     one.unsafe_set(0, 111)
     var two = BufferBuilder.alloc(10)
@@ -100,7 +100,7 @@ def test_buffer_swap():
     assert_equal(two.unsafe_get(0), 111)
 
 
-def test_bitmap_get_set():
+def test_bitmap_get_set() raises:
     var b = BufferBuilder.alloc[DType.bool](10)
     assert_equal(b.size, 64)
 
@@ -118,12 +118,12 @@ def test_bitmap_get_set():
     assert_equal(Bitmap(frozen, 0, 10).count_set_bits(), 2)
 
 
-def _reset(mut bitmap: BitmapBuilder, n_bits: Int):
+def _reset(mut bitmap: BitmapBuilder, n_bits: Int) raises:
     bitmap.set_range(0, n_bits, False)
     assert_bitmap_set(bitmap.unsafe_ptr(), n_bits, [], "after _reset")
 
 
-def test_bitmap_range_set():
+def test_bitmap_range_set() raises:
     var bitmap = BitmapBuilder.alloc(16)
     var n_bits = 16
 
@@ -157,7 +157,7 @@ def test_bitmap_range_set():
             )
 
 
-def test_bitmap_extend():
+def test_bitmap_extend() raises:
     var src_b = BitmapBuilder.alloc(6)
     src_b.set_bit(0, True)
     src_b.set_bit(5, True)
@@ -176,7 +176,7 @@ def test_bitmap_extend():
     assert_bitmap_set(dst2.unsafe_ptr(), 8, [6], "extend at offset 6")
 
 
-def test_buffer_finish():
+def test_buffer_finish() raises:
     var buf = BufferBuilder.alloc(10)
     buf.unsafe_set(0, 42)
     buf.unsafe_set(1, 99)
@@ -189,7 +189,7 @@ def test_buffer_finish():
     assert_equal(frozen.length(), 64)
 
 
-def test_buffer_cpu_kind():
+def test_buffer_cpu_kind() raises:
     """CPU buffers from BufferBuilder.finish() have kind=CPU and are CPU-accessible.
     """
     var b = BufferBuilder.alloc(64)
@@ -201,7 +201,7 @@ def test_buffer_cpu_kind():
     assert_equal(frozen.device_id(), Int64(-1))
 
 
-def test_buffer_foreign_kind():
+def test_buffer_foreign_kind() raises:
     """Foreign CPU buffers are CPU-accessible; release fires on last drop."""
     # n_released lives on the stack; its address is embedded in the buffer
     # data so the release callback can increment it before freeing the memory.
@@ -236,14 +236,14 @@ def test_buffer_foreign_kind():
     assert_equal(n_released, 1)
 
 
-def test_buffer_no_device():
+def test_buffer_no_device() raises:
     # CPU-allocated buffers have no device buffer
     var buf = BufferBuilder.alloc(10)
     var frozen = buf.finish()
     assert_false(frozen.is_device())
 
 
-def test_buffer_device_kind():
+def test_buffer_device_kind() raises:
     """GPU DEVICE buffers are not CPU-accessible."""
     if not has_accelerator():
         return
@@ -267,7 +267,7 @@ def test_buffer_device_kind():
     assert_equal(buf.device_id(), Int64(0))
 
 
-def test_buffer_host_kind():
+def test_buffer_host_kind() raises:
     """HOST (pinned) buffers are CPU-accessible with a valid ptr."""
     if not has_accelerator():
         return
@@ -289,7 +289,7 @@ def test_buffer_host_kind():
     assert_true(Int(buf.ptr) != 0)
 
 
-def test_buffer_host_builder():
+def test_buffer_host_builder() raises:
     """BufferBuilder.alloc_host + finish produce a valid HOST buffer."""
     if not has_accelerator():
         return
@@ -314,7 +314,7 @@ def test_buffer_host_builder():
     assert_true(Int(buf.ptr) != 0)
 
 
-def test_buffer_to_cpu_round_trip():
+def test_buffer_to_cpu_round_trip() raises:
     """Upload a CPU buffer to GPU then download back; data is preserved."""
     if not has_accelerator():
         return
@@ -333,5 +333,5 @@ def test_buffer_to_cpu_round_trip():
     assert_equal(back.unsafe_get(1), 99)
 
 
-def main():
+def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

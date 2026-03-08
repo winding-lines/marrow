@@ -16,7 +16,7 @@ from marrow.dtypes import float16, float32, float64, binary, string, list_
 from marrow.c_data import Field, CArrowSchema
 
 
-def test_schema_primitive_fields():
+def test_schema_primitive_fields() raises:
     """Test the schema with primitive fields."""
 
     # Create a schema with different data types
@@ -47,7 +47,7 @@ def test_schema_primitive_fields():
         assert_equal(schema.field(index=i).name, "field" + String(i + 1))
 
 
-def test_schema_names() -> None:
+def test_schema_names() raises -> None:
     fields = [
         Field("field1", int8, False),
         Field("field2", int16, False),
@@ -66,7 +66,7 @@ def test_schema_names() -> None:
     )
 
 
-def test_from_c_schema() -> None:
+def test_from_c_schema() raises -> None:
     var pa = Python.import_module("pyarrow")
     var pa_schema = pa.schema(
         Python.list(
@@ -100,5 +100,5 @@ def test_from_c_schema() -> None:
     assert_equal(field_1.dtype.fields[1].name, "field_b")
 
 
-def main():
+def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

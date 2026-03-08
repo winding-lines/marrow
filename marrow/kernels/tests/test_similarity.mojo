@@ -34,7 +34,7 @@ fn _approx_equal(a: Float64, b: Float64, tol: Float64 = 1e-5) -> Bool:
     return diff < tol
 
 
-def test_cosine_similarity_identical():
+def test_cosine_similarity_identical() raises:
     """Identical vectors → score ≈ 1.0."""
     var vectors = _make_vectors(1.0, 2.0, 3.0, dim=3)
     var query = _make_query(1.0, 2.0, 3.0)
@@ -43,7 +43,7 @@ def test_cosine_similarity_identical():
     assert_true(_approx_equal(Float64(scores.unsafe_get(0)), 1.0))
 
 
-def test_cosine_similarity_opposite():
+def test_cosine_similarity_opposite() raises:
     """Opposite vectors → score ≈ -1.0."""
     var vectors = _make_vectors(-1.0, -2.0, -3.0, dim=3)
     var query = _make_query(1.0, 2.0, 3.0)
@@ -52,7 +52,7 @@ def test_cosine_similarity_opposite():
     assert_true(_approx_equal(Float64(scores.unsafe_get(0)), -1.0))
 
 
-def test_cosine_similarity_orthogonal():
+def test_cosine_similarity_orthogonal() raises:
     """Orthogonal vectors → score ≈ 0.0."""
     var vectors = _make_vectors(1.0, 0.0, dim=2)
     var query = _make_query(0.0, 1.0)
@@ -61,7 +61,7 @@ def test_cosine_similarity_orthogonal():
     assert_true(_approx_equal(Float64(scores.unsafe_get(0)), 0.0))
 
 
-def test_cosine_similarity_batch():
+def test_cosine_similarity_batch() raises:
     """Multiple vectors: identical, opposite, orthogonal."""
     # 3 vectors of dim 2: [1,0], [-1,0], [0,1]
     var vectors = _make_vectors(1.0, 0.0, -1.0, 0.0, 0.0, 1.0, dim=2)
@@ -73,7 +73,7 @@ def test_cosine_similarity_batch():
     assert_true(_approx_equal(Float64(scores.unsafe_get(2)), 0.0))
 
 
-def test_cosine_similarity_zero_vector():
+def test_cosine_similarity_zero_vector() raises:
     """Zero vector → score = 0.0 (avoid division by zero)."""
     var vectors = _make_vectors(0.0, 0.0, 0.0, dim=3)
     var query = _make_query(1.0, 2.0, 3.0)
@@ -82,7 +82,7 @@ def test_cosine_similarity_zero_vector():
     assert_true(_approx_equal(Float64(scores.unsafe_get(0)), 0.0))
 
 
-def test_cosine_similarity_dimension_mismatch():
+def test_cosine_similarity_dimension_mismatch() raises:
     """Query dim != vector dim raises."""
     var vectors = _make_vectors(1.0, 2.0, 3.0, dim=3)
     var query = _make_query(1.0, 2.0)
@@ -93,5 +93,5 @@ def test_cosine_similarity_dimension_mismatch():
         pass
 
 
-def main():
+def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

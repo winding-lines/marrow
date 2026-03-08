@@ -12,19 +12,19 @@ from marrow.dtypes import *
 from marrow.pretty import ArrayPrinter
 
 
-def _fmt(arr: Array, limit: Int = 3) -> String:
+def _fmt(arr: Array, limit: Int = 3) raises -> String:
     var printer = ArrayPrinter(limit=limit)
     printer.visit(arr)
     return printer^.finish()
 
 
-def _fmt_chunked(arr: ChunkedArray, limit: Int = 3) -> String:
+def _fmt_chunked(arr: ChunkedArray, limit: Int = 3) raises -> String:
     var printer = ArrayPrinter(limit=limit)
     printer.visit(arr)
     return printer^.finish()
 
 
-def test_format_primitive():
+def test_format_primitive() raises:
     var a = array[int32]([1, 2, 3])
     assert_equal(
         _fmt(Array(a^)),
@@ -32,7 +32,7 @@ def test_format_primitive():
     )
 
 
-def test_format_primitive_with_limit():
+def test_format_primitive_with_limit() raises:
     var a = array[int32]([1, 2, 3, 4, 5])
     assert_equal(
         _fmt(Array(a^), limit=3),
@@ -40,7 +40,7 @@ def test_format_primitive_with_limit():
     )
 
 
-def test_format_bool():
+def test_format_bool() raises:
     var a = array([True, False])
     assert_equal(
         _fmt(Array(a^)),
@@ -48,7 +48,7 @@ def test_format_bool():
     )
 
 
-def test_format_string():
+def test_format_string() raises:
     var s = StringBuilder(capacity=2)
     s.append("hello")
     s.append("world")
@@ -58,7 +58,7 @@ def test_format_string():
     )
 
 
-def test_format_list():
+def test_format_list() raises:
     var child = PrimitiveBuilder[int64](capacity=10)
     var list_b = ListBuilder(child, capacity=6)
     child.append(1)
@@ -88,7 +88,7 @@ def test_format_list():
     )
 
 
-def test_format_list_of_list():
+def test_format_list_of_list() raises:
     var child = PrimitiveBuilder[int16](capacity=10)
     var middle = ListBuilder(child, capacity=6)
     var top = ListBuilder(middle, capacity=3)
@@ -125,7 +125,7 @@ def test_format_list_of_list():
     )
 
 
-def test_format_struct():
+def test_format_struct() raises:
     var a_b = PrimitiveBuilder[int32](5)
     a_b.append(1)
     a_b.append(2)
@@ -156,7 +156,7 @@ def test_format_struct():
     )
 
 
-def test_format_empty_struct():
+def test_format_empty_struct() raises:
     var fields = [
         Field("id", int64),
         Field("name", string),
@@ -166,7 +166,7 @@ def test_format_empty_struct():
     assert_equal(_fmt(Array(s.finish())), "StructArray({})")
 
 
-def test_format_chunked():
+def test_format_chunked() raises:
     var first = array[uint8]([0, 1])
     var second = array[uint8]([0, 1, 2])
     var chunks = List[Array]()
@@ -182,7 +182,7 @@ def test_format_chunked():
     )
 
 
-def test_format_limits():
+def test_format_limits() raises:
     assert_equal(
         _fmt(Array(array[int32]([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])), limit=0),
         "PrimitiveArray[int32]([...])",
@@ -197,7 +197,7 @@ def test_format_limits():
     )
 
 
-def test_format_empty_array():
+def test_format_empty_array() raises:
     var b = PrimitiveBuilder[int32](0)
     var arr = b.finish()
     assert_equal(
@@ -206,7 +206,7 @@ def test_format_empty_array():
     )
 
 
-def test_format_all_nulls():
+def test_format_all_nulls() raises:
     var b = PrimitiveBuilder[int32](3)
     b.data[].length = 3
     b.data[].null_count = 3
@@ -216,7 +216,7 @@ def test_format_all_nulls():
     )
 
 
-def test_format_mixed_nulls():
+def test_format_mixed_nulls() raises:
     var b = PrimitiveBuilder[int32](5)
     b.append(1)
     b.append(2)
@@ -230,5 +230,5 @@ def test_format_mixed_nulls():
     )
 
 
-def main():
+def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

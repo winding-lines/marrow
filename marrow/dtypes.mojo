@@ -1,3 +1,6 @@
+from std.python import PythonObject
+from std.python.conversions import ConvertibleFromPython, ConvertibleToPython
+
 # The following enum codes are copied from the C++ implementation of Arrow
 
 # A NULL type having no physical storage
@@ -141,7 +144,7 @@ comptime LIST_VIEW: UInt8 = 41
 comptime LARGE_LIST_VIEW: UInt8 = 42
 
 
-struct Field(Copyable, Equatable, Writable):
+struct Field(ImplicitlyCopyable, Movable, Equatable, Writable, ConvertibleFromPython, ConvertibleToPython):
     var name: String
     var dtype: DataType
     var nullable: Bool
@@ -153,15 +156,24 @@ struct Field(Copyable, Equatable, Writable):
         self.dtype = dtype^
         self.nullable = nullable
 
-    fn __eq__(self, other: Field) -> Bool:
-        return (
-            self.name == other.name
-            and self.dtype == other.dtype
-            and self.nullable == other.nullable
-        )
+    fn __init__(out self, *, py: PythonObject) raises:
+        self = py.downcast_value_ptr[Field]()[]
+
+    fn __eq__(self, other: Self) -> Bool:
+        return self.name == other.name and self.dtype == other.dtype and self.nullable == other.nullable
+
+    fn write_to[W: Writer](self, mut writer: W):
+        writer.write(self.name, ": ", self.dtype)
+
+    fn write_repr_to[W: Writer](self, mut writer: W):
+        writer.write("Field(name=", self.name, ", nullable=", self.nullable, ")")
+
+    fn to_python_object(var self) raises -> PythonObject:
+        return PythonObject(alloc=self^)
 
 
-struct DataType(Equatable, ImplicitlyCopyable, Writable):
+
+struct DataType(ImplicitlyCopyable, Movable, Equatable, Writable, ConvertibleFromPython, ConvertibleToPython):
     var code: UInt8
     var native: DType
     var fields: List[Field]
@@ -220,28 +232,28 @@ struct DataType(Equatable, ImplicitlyCopyable, Writable):
         self.fields = copy.fields.copy()
         self.size = copy.size
 
+    fn __init__(out self, *, py: PythonObject) raises:
+        self = py.downcast_value_ptr[DataType]()[]
+
+    fn __eq__(self, other: Self) -> Bool:
+        if self.code != other.code or self.size != other.size:
+            return False
+        return self.fields == other.fields
+
     fn __is__(self, other: DataType) -> Bool:
         return self == other
 
-    fn __eq__(self, other: DataType) -> Bool:
-        if self.code != other.code:
-            return False
-        if self.size != other.size:
-            return False
-        if len(self.fields) != len(other.fields):
-            return False
-        for i in range(len(self.fields)):
-            if self.fields[i] != other.fields[i]:
-                return False
-        return True
+    fn to_python_object(var self) raises -> PythonObject:
+        return PythonObject(alloc=self^)
+
+    fn write_repr_to[W: Writer](self, mut writer: W):
+        self.write_to(writer)
 
     fn write_to[W: Writer](self, mut writer: W):
         if self.code == NA:
             writer.write("null")
         elif self.code == BOOL:
             writer.write("bool")
-        elif self.code == UINT8:
-            writer.write("uint8")
         elif self.code == INT8:
             writer.write("int8")
         elif self.code == INT16:
@@ -250,6 +262,24 @@ struct DataType(Equatable, ImplicitlyCopyable, Writable):
             writer.write("int32")
         elif self.code == INT64:
             writer.write("int64")
+        elif self.code == UINT8:
+            writer.write("uint8")
+        elif self.code == UINT16:
+            writer.write("uint16")
+        elif self.code == UINT32:
+            writer.write("uint32")
+        elif self.code == UINT64:
+            writer.write("uint64")
+        elif self.code == FLOAT16:
+            writer.write("float16")
+        elif self.code == FLOAT32:
+            writer.write("float32")
+        elif self.code == FLOAT64:
+            writer.write("float64")
+        elif self.code == STRING:
+            writer.write("string")
+        elif self.code == BINARY:
+            writer.write("binary")
         elif self.code == LIST:
             writer.write("list(", self.fields[0].dtype, ")")
         elif self.code == FIXED_SIZE_LIST:
@@ -258,6 +288,7 @@ struct DataType(Equatable, ImplicitlyCopyable, Writable):
             writer.write("struct")
         else:
             writer.write("unknown {}".format(self.code))
+
 
     @always_inline
     fn is_bool(self) -> Bool:

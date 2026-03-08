@@ -32,7 +32,7 @@ fn _count_naive(bm: Bitmap) -> Int:
 # ---------------------------------------------------------------------------
 
 
-def test_builder_alloc_zero_fills():
+def test_builder_alloc_zero_fills() raises:
     """Freshly-allocated builder has all bits cleared."""
     var b = BitmapBuilder.alloc(10)
     var bm = b.finish(10)
@@ -40,7 +40,7 @@ def test_builder_alloc_zero_fills():
         assert_false(bm.is_valid(i))
 
 
-def test_builder_set_bit_true():
+def test_builder_set_bit_true() raises:
     var b = BitmapBuilder.alloc(8)
     b.set_bit(0, True)
     b.set_bit(3, True)
@@ -56,7 +56,7 @@ def test_builder_set_bit_true():
     assert_true(bm.is_valid(7))
 
 
-def test_builder_set_bit_false_clears():
+def test_builder_set_bit_false_clears() raises:
     var b = BitmapBuilder.alloc(8)
     b.set_bit(0, True)
     b.set_bit(1, True)
@@ -66,7 +66,7 @@ def test_builder_set_bit_false_clears():
     assert_false(bm.is_valid(1))
 
 
-def test_builder_set_range_all_true():
+def test_builder_set_range_all_true() raises:
     var b = BitmapBuilder.alloc(16)
     b.set_range(0, 16, True)
     var bm = b.finish(16)
@@ -74,7 +74,7 @@ def test_builder_set_range_all_true():
         assert_true(bm.is_valid(i))
 
 
-def test_builder_set_range_partial():
+def test_builder_set_range_partial() raises:
     # set_range sets exactly the requested range, leaving the rest unchanged
     var b = BitmapBuilder.alloc(16)
     b.set_range(4, 8, True)  # bits 4-11 set
@@ -87,7 +87,7 @@ def test_builder_set_range_partial():
         assert_false(bm.is_valid(i))
 
 
-def test_builder_set_range_clear():
+def test_builder_set_range_clear() raises:
     var b = BitmapBuilder.alloc(16)
     b.set_range(0, 16, True)
     b.set_range(3, 5, False)  # clear bits 3-7
@@ -100,7 +100,7 @@ def test_builder_set_range_clear():
         assert_true(bm.is_valid(i))
 
 
-def test_builder_set_range_zero_length():
+def test_builder_set_range_zero_length() raises:
     var b = BitmapBuilder.alloc(8)
     b.set_range(0, 0, True)
     var bm = b.finish(8)
@@ -108,7 +108,7 @@ def test_builder_set_range_zero_length():
         assert_false(bm.is_valid(i))
 
 
-def test_builder_extend():
+def test_builder_extend() raises:
     # extend copies bits from a Bitmap into the builder at dst_start
     var src_b = BitmapBuilder.alloc(6)
     src_b.set_bit(0, True)
@@ -126,7 +126,7 @@ def test_builder_extend():
     assert_false(bm.is_valid(7))
 
 
-def test_builder_extend_with_offset():
+def test_builder_extend_with_offset() raises:
     # extend into a non-zero dst_start position
     var src_b = BitmapBuilder.alloc(2)
     src_b.set_bit(0, True)
@@ -141,7 +141,7 @@ def test_builder_extend_with_offset():
     assert_false(bm.is_valid(7))
 
 
-def test_builder_finish_length():
+def test_builder_finish_length() raises:
     var b = BitmapBuilder.alloc(20)
     b.set_range(0, 20, True)
     var bm = b.finish(15)  # finish with fewer bits than allocated
@@ -153,12 +153,12 @@ def test_builder_finish_length():
 # ---------------------------------------------------------------------------
 
 
-def test_len():
+def test_len() raises:
     var bm = _make(13, [])
     assert_equal(len(bm), 13)
 
 
-def test_is_valid_and_is_null():
+def test_is_valid_and_is_null() raises:
     var bm = _make(8, [1, 4, 6])
     assert_false(bm.is_valid(0))
     assert_true(bm.is_valid(1))
@@ -178,31 +178,31 @@ def test_is_valid_and_is_null():
 # ---------------------------------------------------------------------------
 
 
-def test_count_set_bits_empty():
+def test_count_set_bits_empty() raises:
     var b = BitmapBuilder.alloc(0)
     var bm = b.finish(0)
     assert_equal(bm.count_set_bits(), 0)
 
 
-def test_count_set_bits_none_set():
+def test_count_set_bits_none_set() raises:
     var bm = _make(16, [])
     assert_equal(bm.count_set_bits(), 0)
 
 
-def test_count_set_bits_all_set():
+def test_count_set_bits_all_set() raises:
     var b = BitmapBuilder.alloc(16)
     b.set_range(0, 16, True)
     var bm = b.finish(16)
     assert_equal(bm.count_set_bits(), 16)
 
 
-def test_count_set_bits_known_pattern():
+def test_count_set_bits_known_pattern() raises:
     # bits 0, 3, 7, 8, 15 → 5 set bits
     var bm = _make(16, [0, 3, 7, 8, 15])
     assert_equal(bm.count_set_bits(), 5)
 
 
-def test_count_set_bits_partial_last_byte():
+def test_count_set_bits_partial_last_byte() raises:
     # 10-bit bitmap: bits 0-7 all set, bits 8-9 both set
     var b = BitmapBuilder.alloc(10)
     b.set_range(0, 10, True)
@@ -210,7 +210,7 @@ def test_count_set_bits_partial_last_byte():
     assert_equal(bm.count_set_bits(), 10)
 
 
-def test_count_set_bits_with_offset():
+def test_count_set_bits_with_offset() raises:
     # count_set_bits on a sliced bitmap respects _offset
     var b = BitmapBuilder.alloc(16)
     b.set_range(0, 16, True)
@@ -220,7 +220,7 @@ def test_count_set_bits_with_offset():
     assert_equal(sliced.count_set_bits(), 8)
 
 
-def test_count_set_bits_large():
+def test_count_set_bits_large() raises:
     # exercises the SIMD loop for multi-SIMD-width bitmaps
     var b = BitmapBuilder.alloc(1024)
     b.set_range(0, 512, True)  # first half set
@@ -228,7 +228,7 @@ def test_count_set_bits_large():
     assert_equal(bm.count_set_bits(), 512)
 
 
-def test_count_set_bits_large_offset_byte_aligned():
+def test_count_set_bits_large_offset_byte_aligned() raises:
     """Count bits on a slice with a large byte-aligned offset (> 64 bytes).
 
     The aligned range from _simd_offset_range will include extra leading
@@ -242,7 +242,7 @@ def test_count_set_bits_large_offset_byte_aligned():
     assert_equal(sliced.count_set_bits(), 64)
 
 
-def test_count_set_bits_large_offset_with_shift():
+def test_count_set_bits_large_offset_with_shift() raises:
     """Count bits on a slice with a large offset AND sub-byte shift.
 
     Offset 577 → byte 72, shift 1. The aligned range starts at byte 64,
@@ -255,7 +255,7 @@ def test_count_set_bits_large_offset_with_shift():
     assert_equal(sliced.count_set_bits(), 48)
 
 
-def test_count_set_bits_large_offset_sparse():
+def test_count_set_bits_large_offset_sparse() raises:
     """Count bits with large offset where surrounding bytes have set bits.
 
     Ensures the count only includes bits within the slice, not the
@@ -272,7 +272,7 @@ def test_count_set_bits_large_offset_sparse():
     assert_equal(sliced.count_set_bits(), 10)
 
 
-def test_count_set_bits_large_offset_none_set():
+def test_count_set_bits_large_offset_none_set() raises:
     """Count on a slice where only surrounding bytes have bits set.
 
     Verifies zero count when the slice itself has no bits set but
@@ -288,7 +288,7 @@ def test_count_set_bits_large_offset_none_set():
     assert_equal(sliced.count_set_bits(), 0)
 
 
-def test_count_set_bits_small_slice_in_large_bitmap():
+def test_count_set_bits_small_slice_in_large_bitmap() raises:
     """Tiny slice (< 1 SIMD width) deep inside a large all-ones bitmap.
 
     Both lead and trail corrections must fire, and the aligned range
@@ -302,7 +302,7 @@ def test_count_set_bits_small_slice_in_large_bitmap():
     assert_equal(sliced.count_set_bits(), 5)
 
 
-def test_count_set_bits_vs_naive_all_patterns():
+def test_count_set_bits_vs_naive_all_patterns() raises:
     """Compare count_set_bits against _count_naive across sizes and offsets.
 
     Covers:
@@ -367,7 +367,7 @@ def test_count_set_bits_vs_naive_all_patterns():
             assert_equal(sa.count_set_bits(), _count_naive(sa))
 
 
-def test_count_set_bits_interior_slices():
+def test_count_set_bits_interior_slices() raises:
     """Test count_set_bits on slices that end BEFORE the buffer end.
 
     The aligned range includes trailing bytes with real data from the larger
@@ -419,7 +419,7 @@ def test_count_set_bits_interior_slices():
             assert_equal(sa.count_set_bits(), _count_naive(sa))
 
 
-def test_count_set_bits_trail_bits_exact_boundary():
+def test_count_set_bits_trail_bits_exact_boundary() raises:
     # trail_bits == 0 when bit_end lands exactly on a 64-byte boundary
     # 512 bits = 64 bytes, exact fit: no lead or trail correction needed.
     var b = BitmapBuilder.alloc(512)
@@ -434,7 +434,7 @@ def test_count_set_bits_trail_bits_exact_boundary():
     assert_equal(s.count_set_bits(), 512)
 
 
-def test_count_set_bits_trail_bytes_only():
+def test_count_set_bits_trail_bytes_only() raises:
     # trail_bytes > 0, trail_sub_byte == 0: byte-aligned end, non-zero trailing bytes
     # Slice of 8 bits (1 byte) at offset 0 in a large all-ones bitmap.
     # byte_end=1, aligned_end=64, trail_bytes=63, trail_sub_byte=0.
@@ -445,7 +445,7 @@ def test_count_set_bits_trail_bytes_only():
     assert_equal(s.count_set_bits(), 8)
 
 
-def test_count_set_bits_lead_and_trail_bytes_nonzero():
+def test_count_set_bits_lead_and_trail_bytes_nonzero() raises:
     """Both lead_bytes > 0 and trail_bytes > 0, with real data in both regions.
     """
     # Slice [520, 530) inside a 1000-bit all-ones bitmap.
@@ -464,7 +464,7 @@ def test_count_set_bits_lead_and_trail_bytes_nonzero():
 # ---------------------------------------------------------------------------
 
 
-def test_slice_shares_buffer():
+def test_slice_shares_buffer() raises:
     # slice returns a zero-copy view with correct offset and length
     var bm = _make(16, [0, 5, 10, 15])
     var s = bm.slice(4, 8)  # bits 4-11 of original
@@ -477,14 +477,14 @@ def test_slice_shares_buffer():
     assert_false(s.is_valid(0))
 
 
-def test_slice_single_bit():
+def test_slice_single_bit() raises:
     var bm = _make(8, [3])
     var s = bm.slice(3, 1)
     assert_equal(len(s), 1)
     assert_true(s.is_valid(0))
 
 
-def test_slice_count_set_bits():
+def test_slice_count_set_bits() raises:
     var bm = _make(16, [2, 3, 4, 5, 6])
     var s = bm.slice(2, 5)  # bits 2-6 → all 5 set
     assert_equal(s.count_set_bits(), 5)
@@ -495,7 +495,7 @@ def test_slice_count_set_bits():
 # ---------------------------------------------------------------------------
 
 
-def test_invert_all_zeros():
+def test_invert_all_zeros() raises:
     var bm = _make(8, [])
     var inv = ~bm
     assert_equal(len(inv), 8)
@@ -503,7 +503,7 @@ def test_invert_all_zeros():
         assert_true(inv.is_valid(i))
 
 
-def test_invert_all_ones():
+def test_invert_all_ones() raises:
     var b = BitmapBuilder.alloc(8)
     b.set_range(0, 8, True)
     var bm = b.finish(8)
@@ -512,7 +512,7 @@ def test_invert_all_ones():
         assert_false(inv.is_valid(i))
 
 
-def test_invert_pattern():
+def test_invert_pattern() raises:
     # bits 1, 3, 5 set → inverted: 0, 2, 4, 6, 7 set
     var bm = _make(8, [1, 3, 5])
     var inv = ~bm
@@ -526,7 +526,7 @@ def test_invert_pattern():
     assert_true(inv.is_valid(7))
 
 
-def test_invert_does_not_bleed_past_length():
+def test_invert_does_not_bleed_past_length() raises:
     """Bits beyond _length must be 0 in the result (no spurious set bits)."""
     var bm = _make(10, [])  # 10 bits, all clear
     var inv = ~bm
@@ -539,7 +539,7 @@ def test_invert_does_not_bleed_past_length():
 # ---------------------------------------------------------------------------
 
 
-def test_and_basic():
+def test_and_basic() raises:
     # [1,0,1,0,1,0,1,0] & [1,1,0,0,1,1,0,0] = [1,0,0,0,1,0,0,0]
     var a = _make(8, [0, 2, 4, 6])
     var b = _make(8, [0, 1, 4, 5])
@@ -555,7 +555,7 @@ def test_and_basic():
     assert_false(r.is_valid(7))
 
 
-def test_and_identity():
+def test_and_identity() raises:
     # a & all-ones == a
     var a = _make(16, [1, 5, 9, 13])
     var ones_b = BitmapBuilder.alloc(16)
@@ -566,7 +566,7 @@ def test_and_identity():
         assert_equal(r.is_valid(i), a.is_valid(i))
 
 
-def test_and_annihilator():
+def test_and_annihilator() raises:
     # a & all-zeros == all-zeros
     var a = _make(16, [1, 5, 9, 13])
     var zeros = _make(16, [])
@@ -575,7 +575,7 @@ def test_and_annihilator():
         assert_false(r.is_valid(i))
 
 
-def test_and_large():
+def test_and_large() raises:
     # exercises the SIMD loop
     var b1 = BitmapBuilder.alloc(1024)
     b1.set_range(0, 512, True)
@@ -594,7 +594,7 @@ def test_and_large():
 # ---------------------------------------------------------------------------
 
 
-def test_or_basic():
+def test_or_basic() raises:
     var a = _make(8, [0, 2])
     var b = _make(8, [1, 2])
     var r = a | b
@@ -604,7 +604,7 @@ def test_or_basic():
     assert_false(r.is_valid(3))
 
 
-def test_or_idempotent():
+def test_or_idempotent() raises:
     # a | a == a
     var a = _make(16, [0, 3, 7, 10])
     var r = a | a
@@ -617,7 +617,7 @@ def test_or_idempotent():
 # ---------------------------------------------------------------------------
 
 
-def test_xor_basic():
+def test_xor_basic() raises:
     # [1,0,1,0] ^ [1,1,0,0] = [0,1,1,0]
     var a = _make(4, [0, 2])
     var b = _make(4, [0, 1])
@@ -628,7 +628,7 @@ def test_xor_basic():
     assert_false(r.is_valid(3))
 
 
-def test_xor_self_is_zero():
+def test_xor_self_is_zero() raises:
     # a ^ a == all-zeros
     var a = _make(16, [1, 3, 5, 7])
     var r = a ^ a
@@ -641,7 +641,7 @@ def test_xor_self_is_zero():
 # ---------------------------------------------------------------------------
 
 
-def test_and_not_basic():
+def test_and_not_basic() raises:
     # [1,0,1,0] & ~[1,1,0,0] = [1,0,1,0] & [0,0,1,1] = [0,0,1,0]
     var a = _make(4, [0, 2])
     var b = _make(4, [0, 1])
@@ -652,7 +652,7 @@ def test_and_not_basic():
     assert_false(r.is_valid(3))
 
 
-def test_and_not_with_none_mask():
+def test_and_not_with_none_mask() raises:
     # a.and_not(all-zeros) == a
     var a = _make(8, [0, 3, 7])
     var zeros = _make(8, [])
@@ -666,7 +666,7 @@ def test_and_not_with_none_mask():
 # ---------------------------------------------------------------------------
 
 
-def test_and_with_same_nonzero_offset():
+def test_and_with_same_nonzero_offset() raises:
     """Binary ops on sliced bitmaps sharing the same non-zero sub-byte offset.
     """
     var full = _make(16, [2, 3, 4, 6, 10, 11, 12, 14])
@@ -678,7 +678,7 @@ def test_and_with_same_nonzero_offset():
         assert_equal(r.is_valid(i), a.is_valid(i))
 
 
-def test_and_same_shift_fast_path():
+def test_and_same_shift_fast_path() raises:
     """Bitmaps with identical non-zero sub-byte offsets use the same-shift SIMD path.
     """
     # Build two 12-bit bitmaps with known patterns; slice both at offset=3
@@ -704,7 +704,7 @@ def test_and_same_shift_fast_path():
     assert_true(r.is_valid(8))
 
 
-def test_or_same_shift_fast_path():
+def test_or_same_shift_fast_path() raises:
     """OR of two sliced bitmaps with same non-zero sub-byte offset."""
     var fa = _make(16, [3, 5])
     var fb = _make(16, [3, 4])
@@ -719,7 +719,7 @@ def test_or_same_shift_fast_path():
     assert_false(r.is_valid(4))
 
 
-def test_and_different_offsets():
+def test_and_different_offsets() raises:
     """AND of bitmaps with different sub-byte offsets (shift-one path)."""
     # fa bits 3,5,7,9,11 set; sliced at offset 3 → shift_a=3, indices 0,2,4,6,8
     # fb bits 5,7,9,11,13 set; sliced at offset 5 → shift_b=5, indices 0,2,4,6,8
@@ -734,7 +734,7 @@ def test_and_different_offsets():
         assert_equal(r.is_valid(i), i % 2 == 0)
 
 
-def test_and_different_offsets_large_byte_delta():
+def test_and_different_offsets_large_byte_delta() raises:
     """AND where byte-level offsets differ by more than 8 bytes."""
     # Build a large bitmap so we can slice at widely separated positions.
     # Set every even bit in the range we care about.
@@ -770,7 +770,7 @@ def test_and_different_offsets_large_byte_delta():
         assert_equal(r.is_valid(i), i % 2 == 0)
 
 
-def test_and_different_offsets_large_byte_delta_different_shift():
+def test_and_different_offsets_large_byte_delta_different_shift() raises:
     """AND where byte offsets AND sub-byte shifts both differ."""
     # a at bit 100 (byte 12, shift 4); b at bit 503 (byte 62, shift 7).
     # byte_delta = 50, bit shift delta = 3.
@@ -790,7 +790,7 @@ def test_and_different_offsets_large_byte_delta_different_shift():
         assert_true(r.is_valid(i))
 
 
-def test_or_different_offsets_large_byte_delta():
+def test_or_different_offsets_large_byte_delta() raises:
     """OR where byte-level offsets differ significantly."""
     var full_a = _make(600, [100, 104, 108])
     var full_b = _make(600, [500, 501, 502])
@@ -812,7 +812,7 @@ def test_or_different_offsets_large_byte_delta():
     assert_false(r.is_valid(11))
 
 
-def test_xor_different_offsets_large_byte_delta():
+def test_xor_different_offsets_large_byte_delta() raises:
     """XOR where byte-level offsets differ by > 64 bytes."""
     var bits_a = List[Int]()
     var bits_b = List[Int]()
@@ -830,7 +830,7 @@ def test_xor_different_offsets_large_byte_delta():
         assert_false(r.is_valid(i))
 
 
-def test_and_not_different_offsets_large_byte_delta():
+def test_and_not_different_offsets_large_byte_delta() raises:
     """AND-NOT where byte-level offsets differ significantly."""
     var bits_a = List[Int]()
     for i in range(16):
@@ -849,7 +849,7 @@ def test_and_not_different_offsets_large_byte_delta():
             assert_true(r.is_valid(i))
 
 
-def test_invert_with_offset():
+def test_invert_with_offset() raises:
     var full = _make(16, [4, 5, 6, 7])
     var s = full.slice(4, 8)  # bits 4-11 → [1,1,1,1,0,0,0,0]
     var inv = ~s
@@ -863,7 +863,7 @@ def test_invert_with_offset():
     assert_true(inv.is_valid(7))
 
 
-def test_invert_large_byte_offset():
+def test_invert_large_byte_offset() raises:
     # __invert__ with byte_offset > 63: exercises the lead_bytes > 0 code path
     # 600-bit source; slice at bit 576 → byte_offset=72, lead_bytes=8, shift=0.
     # Set bits 577 and 578 of the full bitmap (slice indices 1 and 2).
@@ -882,7 +882,7 @@ def test_invert_large_byte_offset():
     assert_equal(inv.count_set_bits(), 22)
 
 
-def test_invert_large_byte_offset_with_shift():
+def test_invert_large_byte_offset_with_shift() raises:
     # __invert__ with large byte_offset AND non-zero sub-byte shift
     # Slice at bit 577 → byte_offset=72, shift=1, lead_bytes=8.
     # full bits 577, 578, 580 set → slice indices 0, 1, 3 set.
@@ -905,7 +905,7 @@ def test_invert_large_byte_offset_with_shift():
     assert_equal(inv.count_set_bits(), 5)
 
 
-def test_and_length_mismatch_raises():
+def test_and_length_mismatch_raises() raises:
     var a = _make(8, [0, 2])
     var b = _make(4, [0, 2])
     try:
@@ -915,7 +915,7 @@ def test_and_length_mismatch_raises():
         pass
 
 
-def test_or_length_mismatch_raises():
+def test_or_length_mismatch_raises() raises:
     var a = _make(8, [0, 2])
     var b = _make(4, [0])
     try:
@@ -925,7 +925,7 @@ def test_or_length_mismatch_raises():
         pass
 
 
-def test_xor_length_mismatch_raises():
+def test_xor_length_mismatch_raises() raises:
     var a = _make(8, [0, 2])
     var b = _make(4, [0])
     try:
@@ -935,7 +935,7 @@ def test_xor_length_mismatch_raises():
         pass
 
 
-def test_and_not_length_mismatch_raises():
+def test_and_not_length_mismatch_raises() raises:
     var a = _make(8, [0, 2])
     var b = _make(4, [0])
     try:
@@ -945,5 +945,5 @@ def test_and_not_length_mismatch_raises():
         pass
 
 
-def main():
+def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

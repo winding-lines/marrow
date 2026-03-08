@@ -1,9 +1,11 @@
-from python import PythonObject, Python
-from python.bindings import PythonModuleBuilder
-import math
-from marrow.module.dtypes_api import add_to_module as add_dtypes
-from marrow.module.arrays.primitive_api import add_to_module as add_primitive
-from os import abort
+"""Python module entry point for marrow."""
+
+from std.os import abort
+from std.python import PythonObject
+from std.python.bindings import PythonModuleBuilder
+from dtypes import add_to_module as add_dtypes
+from arrays import add_to_module as add_arrays
+# from compute import add_to_module as add_compute
 
 
 @export
@@ -11,7 +13,8 @@ fn PyInit_marrow() -> PythonObject:
     try:
         var m = PythonModuleBuilder("marrow")
         add_dtypes(m)
-        add_primitive(m)
+        add_arrays(m)
+        # add_compute(m)
         return m.finalize()
     except e:
         abort(String("error creating Python Mojo module:", e))

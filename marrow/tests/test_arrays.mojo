@@ -41,7 +41,7 @@ from std.reflection import call_location
 #         )
 
 
-def test_array_data_with_offset():
+def test_array_data_with_offset() raises:
     """Test ArrayData with offset functionality."""
     # Create ArrayData with offset
     var bitmap = BitmapBuilder.alloc(10)
@@ -78,7 +78,7 @@ def test_array_data_with_offset():
     assert_true(array_data.is_valid(2))  # Should check bitmap[4]
 
 
-def test_array_data_fieldwise_init():
+def test_array_data_fieldwise_init() raises:
     """Test that @fieldwise_init decorator works with offset field."""
     var buffer_b = BufferBuilder.alloc[int8.native](5)
     var buffer = buffer_b.finish()
@@ -101,12 +101,12 @@ def test_array_data_fieldwise_init():
     assert_equal(array_data.offset, 3)
 
 
-def test_array_from_primitive():
+def test_array_from_primitive() raises:
     var a = array[int32]([1, 2, 3])
     assert_equal(a.length, 3)
 
 
-def test_array_from_string():
+def test_array_from_string() raises:
     var s = StringBuilder()
     s.append("hello")
     s.append("world")
@@ -114,21 +114,21 @@ def test_array_from_string():
     assert_equal(a.length, 2)
 
 
-def test_array_from_list():
+def test_array_from_list() raises:
     var ints_b = PrimitiveBuilder[int64]()
     var l = ListBuilder(ints_b)
     var a = l.finish()
     assert_true(a.dtype.is_list())
 
 
-def test_array_from_struct():
+def test_array_from_struct() raises:
     var fields = [Field("x", int32)]
     var s = StructBuilder(fields^, List[Builder](), capacity=5)
     var a = s.finish()
     assert_true(a.dtype.is_struct())
 
 
-def test_array_copy():
+def test_array_copy() raises:
     var src_buffers = List[Buffer]()
     var _sb = BufferBuilder.alloc[int8.native](3)
     src_buffers.append(_sb.finish())
@@ -150,7 +150,7 @@ def test_array_copy():
     assert_equal(src.length, 3)
 
 
-def test_array_move():
+def test_array_move() raises:
     var a_buffers = List[Buffer]()
     var _ab = BufferBuilder.alloc[int8.native](5)
     a_buffers.append(_ab.finish())
@@ -168,7 +168,7 @@ def test_array_move():
     assert_equal(b.dtype, int8)
 
 
-def test_boolean_array():
+def test_boolean_array() raises:
     var a = BoolBuilder()
     assert_equal(len(a), 0)
     assert_equal(a.data[].capacity, 0)
@@ -196,7 +196,7 @@ def test_boolean_array():
     assert_equal(frozen.length, 4)
 
 
-def test_append():
+def test_append() raises:
     var a = PrimitiveBuilder[int8]()
     assert_equal(len(a), 0)
     assert_equal(a.data[].capacity, 0)
@@ -207,12 +207,12 @@ def test_append():
     assert_true(a.data[].capacity >= len(a))
 
 
-def test_array_empty():
+def test_array_empty() raises:
     var a = array[int32]()
     assert_equal(len(a), 0)
 
 
-def test_array_from_ints():
+def test_array_from_ints() raises:
     var g = array[int8]([1, 2])
     assert_equal(len(g), 2)
     assert_equal(g.unsafe_get(0), 1)
@@ -225,7 +225,7 @@ def test_array_from_ints():
     assert_true(b.unsafe_get(2))
 
 
-def test_array_with_nulls():
+def test_array_with_nulls() raises:
     var a = array[int32]([1, None, 3])
     assert_equal(len(a), 3)
     assert_equal(a.null_count(), 1)
@@ -242,7 +242,7 @@ def test_array_with_nulls():
     assert_true(b.is_valid(2))
 
 
-def test_arange():
+def test_arange() raises:
     var a = arange[int32](1, 5)
     assert_equal(len(a), 4)
     assert_equal(a.unsafe_get(0), 1)
@@ -256,31 +256,31 @@ def test_arange():
     assert_equal(b.unsafe_get(2), 2)
 
 
-def test_arange_empty():
+def test_arange_empty() raises:
     var a = arange[int32](5, 5)
     assert_equal(len(a), 0)
 
 
-def test_arange_single():
+def test_arange_single() raises:
     var a = arange[int64](7, 8)
     assert_equal(len(a), 1)
     assert_equal(a.unsafe_get(0), 7)
 
 
-def test_arange_validity():
+def test_arange_validity() raises:
     var a = arange[int16](0, 4)
     for i in range(4):
         assert_true(a.is_valid(i))
 
 
-def test_arange_int8():
+def test_arange_int8() raises:
     var a = arange[int8](10, 15)
     assert_equal(len(a), 5)
     assert_equal(a.unsafe_get(0), 10)
     assert_equal(a.unsafe_get(4), 14)
 
 
-def test_arange_uint64():
+def test_arange_uint64() raises:
     var a = arange[uint64](100, 103)
     assert_equal(len(a), 3)
     assert_equal(a.unsafe_get(0), 100)
@@ -310,7 +310,7 @@ def test_arange_uint64():
 #     assert_equal(result.null_count(), 0)
 
 
-def test_primitive_array_with_offset():
+def test_primitive_array_with_offset() raises:
     """Test PrimitiveArray with offset functionality."""
     var b = PrimitiveBuilder[int32](10)
     b.append(100)
@@ -335,7 +335,7 @@ def test_primitive_array_with_offset():
     assert_equal(arr_with_offset.unsafe_get(2), 500)  # Should get arr[4]
 
 
-def test_primitive_array_nulls_with_offset():
+def test_primitive_array_nulls_with_offset() raises:
     """Test nulls() creates an array with all null values and default offset."""
     var null_arr = nulls[int64](5)
     assert_equal(null_arr.offset, 0)
@@ -346,7 +346,7 @@ def test_primitive_array_nulls_with_offset():
 
 
 # TODO: expose capacity() on builders and test that as well
-def test_string_builder():
+def test_string_builder() raises:
     var a = StringBuilder()
     assert_equal(len(a), 0)
     assert_equal(a.data[].capacity, 0)
@@ -365,7 +365,7 @@ def test_string_builder():
     assert_equal(String(frozen.unsafe_get(1)), "world")
 
 
-def test_list_bool_array():
+def test_list_bool_array() raises:
     var bool_b = BoolBuilder(3)
     bool_b.append(True)
     bool_b.append(False)
@@ -383,7 +383,7 @@ def test_list_bool_array():
     assert_true(bool_array.unsafe_get(2))
 
 
-def test_list_str():
+def test_list_str() raises:
     var str_b = StringBuilder()
     str_b.append("hello")
     str_b.append("world")
@@ -397,7 +397,7 @@ def test_list_str():
     assert_equal(String(first_value.unsafe_get(1)), "world")
 
 
-def test_list_of_list():
+def test_list_of_list() raises:
     var child = PrimitiveBuilder[int64](capacity=10)
     var middle = ListBuilder(child, capacity=6)
     var top_b = ListBuilder(middle, capacity=3)
@@ -433,7 +433,7 @@ def test_list_of_list():
     assert_equal(bottom.unsafe_get(1), 4)
 
 
-def test_fixed_size_list_int_array():
+def test_fixed_size_list_int_array() raises:
     """Construct a FixedSizeListArray of int64 lists, size=3."""
     var ints_b = PrimitiveBuilder[int64](6)
     ints_b.append(1)
@@ -465,7 +465,7 @@ def test_fixed_size_list_int_array():
     assert_equal(second.unsafe_get(2), 6)
 
 
-def test_fixed_size_list_roundtrip():
+def test_fixed_size_list_roundtrip() raises:
     """FixedSizeListArray round-trip through builder."""
     var ints_b = PrimitiveBuilder[int32](4)
     ints_b.append(10)
@@ -486,7 +486,7 @@ def test_fixed_size_list_roundtrip():
     assert_equal(first.unsafe_get(1), 20)
 
 
-def test_fixed_size_list_with_nulls():
+def test_fixed_size_list_with_nulls() raises:
     """FixedSizeListArray with null lists."""
     var ints_b = PrimitiveBuilder[int64](6)
     ints_b.append(1)
@@ -517,9 +517,8 @@ def test_fixed_size_list_with_nulls():
     assert_equal(second.unsafe_get(2), 6)
 
 
-def test_fixed_size_list_unsafe_get_dtype():
-    """unsafe_get returns a slice with the child element dtype, not the list dtype.
-    """
+def test_fixed_size_list_unsafe_get_dtype() raises:
+    # unsafe_get returns a slice with the child element dtype, not the list dtype.
     var ints_b = PrimitiveBuilder[int32](4)
     ints_b.append(10)
     ints_b.append(20)
@@ -556,7 +555,7 @@ def test_fixed_size_list_unsafe_get_dtype():
 # #     assert_true("FixedSizeListArray" in s)
 
 
-def test_struct_array():
+def test_struct_array() raises:
     var fields = [
         Field("id", int64),
         Field("name", string),
@@ -576,7 +575,7 @@ def test_struct_array():
     assert_equal(data.dtype.fields[2].name, "active")
 
 
-def test_struct_array_unsafe_get():
+def test_struct_array_unsafe_get() raises:
     var a_b = PrimitiveBuilder[int32](5)
     a_b.append(1)
     a_b.append(2)
@@ -607,7 +606,7 @@ def test_struct_array_unsafe_get():
     assert_equal(int_b.unsafe_get(2), 30)
 
 
-def test_chunked_array():
+def test_chunked_array() raises:
     var arrays = List[Array]()
     arrays.append(array[uint8]([0]))
     arrays.append(array[uint8]([0, 1]))
@@ -622,7 +621,7 @@ def test_chunked_array():
     assert_equal(second_chunk.unsafe_get(1), 1)
 
 
-def test_combine_chunked_array():
+def test_combine_chunked_array() raises:
     var arrays = List[Array]()
     arrays.append(array[uint8]([0]))
     arrays.append(array[uint8]([0, 1]))
@@ -639,7 +638,7 @@ def test_combine_chunked_array():
     assert_equal(combined_array.buffers[1].unsafe_get(1), 1)
 
 
-def test_primitive_finish_shrinks():
+def test_primitive_finish_shrinks() raises:
     """Freeze() on an over-allocated builder trims capacity to length."""
     var a = PrimitiveBuilder[int64](capacity=100)
     a.append(42)
@@ -654,7 +653,7 @@ def test_primitive_finish_shrinks():
     assert_equal(values_buffer.size, 64)
 
 
-def test_primitive_finish_via_append():
+def test_primitive_finish_via_append() raises:
     """Freeze() works on a builder built with append() (auto-grow capacity)."""
     var a = PrimitiveBuilder[int64]()
     a.append(1)
@@ -666,7 +665,7 @@ def test_primitive_finish_via_append():
     assert_equal(frozen.unsafe_get(2), 3)
 
 
-def test_primitive_finish_preserves_nulls():
+def test_primitive_finish_preserves_nulls() raises:
     """Freeze() preserves null validity information."""
     var a = PrimitiveBuilder[int64](capacity=3)
     a.append(1)
@@ -679,7 +678,7 @@ def test_primitive_finish_preserves_nulls():
     assert_true(frozen.is_valid(2))
 
 
-def test_primitive_finish_converts_to_array():
+def test_primitive_finish_converts_to_array() raises:
     """PrimitiveBuilder.finish() returns a typed PrimitiveArray."""
     var a = PrimitiveBuilder[int64]()
     a.append(7)
@@ -690,7 +689,7 @@ def test_primitive_finish_converts_to_array():
     assert_equal(frozen.unsafe_get(1), 8)
 
 
-def test_getitem_bounds_check():
+def test_getitem_bounds_check() raises:
     """__getitem__ raises on out-of-bounds access."""
     var b = PrimitiveBuilder[int64]()
     b.append(1)
@@ -710,7 +709,7 @@ def test_getitem_bounds_check():
     assert_equal(a[1], 2)
 
 
-def test_setitem_bounds_check():
+def test_setitem_bounds_check() raises:
     """PrimitiveArray __getitem__ returns correct values."""
     var a = PrimitiveBuilder[int64]()
     a.append(99)
@@ -718,7 +717,7 @@ def test_setitem_bounds_check():
     assert_equal(frozen[0], 99)
 
 
-def test_string_finish_zero_copy():
+def test_string_finish_zero_copy() raises:
     """Freeze() on an exact-size StringBuilder moves buffers."""
     var s = StringBuilder(capacity=2)
     s.append("hello")
@@ -729,7 +728,7 @@ def test_string_finish_zero_copy():
     assert_equal(String(frozen.unsafe_get(1)), "world")
 
 
-def test_string_finish_shrinks():
+def test_string_finish_shrinks() raises:
     """Freeze() on an over-allocated StringBuilder trims to exact size."""
     var s = StringBuilder(capacity=100)
     s.append("hi")
@@ -738,7 +737,7 @@ def test_string_finish_shrinks():
     assert_equal(String(frozen.unsafe_get(0)), "hi")
 
 
-def test_string_getitem_bounds_check():
+def test_string_getitem_bounds_check() raises:
     """StringArray __getitem__ raises on out-of-bounds."""
     var s = StringBuilder()
     s.append("a")
@@ -751,11 +750,11 @@ def test_string_getitem_bounds_check():
         pass
 
 
-def test_pretty_printing():
+def test_pretty_printing() raises:
     var a = array[int32]([1, 2, 3])
     var s = String(a)
     print(s)
 
 
-def main():
+def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

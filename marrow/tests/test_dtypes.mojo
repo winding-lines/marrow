@@ -2,27 +2,27 @@ from std.testing import assert_equal, assert_true, assert_false, TestSuite
 import marrow.dtypes as dt
 
 
-def test_bool_type():
+def test_bool_type() raises:
     assert_true(dt.bool_ == dt.bool_)
     assert_false(dt.bool_ == dt.int64)
     assert_true(dt.bool_ is dt.bool_)
     assert_false(dt.bool_ is dt.int64)
 
 
-def test_list_type():
+def test_list_type() raises:
     assert_true(dt.list_(dt.int64) == dt.list_(dt.int64))
     assert_false(dt.list_(dt.int64) == dt.list_(dt.int32))
     t1 = dt.list_(dt.list_(dt.int64))
     assert_equal(String(t1), "list(list(int64))")
 
 
-def test_field():
+def test_field() raises:
     var field = dt.Field("a", dt.int64, False)
-    var expected = "Field(name=a, dtype=int64, nullable=False)"
+    var expected = "a: int64"
     assert_equal(String(field), expected)
 
 
-def test_struct_type():
+def test_struct_type() raises:
     s1 = dt.struct_(
         dt.Field("a", dt.int64, False),
         dt.Field("b", dt.int32, False),
@@ -40,7 +40,7 @@ def test_struct_type():
     assert_false(s1 == s3)
 
 
-def test_is_integer():
+def test_is_integer() raises:
     assert_true(dt.int8.is_integer())
     assert_true(dt.int16.is_integer())
     assert_true(dt.int32.is_integer())
@@ -55,7 +55,7 @@ def test_is_integer():
     assert_false(dt.list_(dt.int64).is_integer())
 
 
-def test_is_signed_integer():
+def test_is_signed_integer() raises:
     assert_true(dt.int8.is_signed_integer())
     assert_true(dt.int16.is_signed_integer())
     assert_true(dt.int32.is_signed_integer())
@@ -69,7 +69,7 @@ def test_is_signed_integer():
     assert_false(dt.float64.is_signed_integer())
 
 
-def test_is_unsigned_integer():
+def test_is_unsigned_integer() raises:
     assert_false(dt.int8.is_unsigned_integer())
     assert_false(dt.int16.is_unsigned_integer())
     assert_false(dt.int32.is_unsigned_integer())
@@ -83,7 +83,7 @@ def test_is_unsigned_integer():
     assert_false(dt.float64.is_unsigned_integer())
 
 
-def test_is_floating_point():
+def test_is_floating_point() raises:
     assert_false(dt.int8.is_floating_point())
     assert_false(dt.int16.is_floating_point())
     assert_false(dt.int32.is_floating_point())
@@ -97,7 +97,7 @@ def test_is_floating_point():
     assert_true(dt.float64.is_floating_point())
 
 
-def test_bit_width():
+def test_bit_width() raises:
     assert_equal(dt.int8.bit_width(), 8)
     assert_equal(dt.int16.bit_width(), 16)
     assert_equal(dt.int32.bit_width(), 32)
@@ -112,5 +112,5 @@ def test_bit_width():
     assert_equal(dt.list_(dt.int64).bit_width(), 0)
 
 
-def main():
+def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

@@ -6,13 +6,13 @@ from marrow.dtypes import int32, int64
 from marrow.kernels.aggregate import sum
 
 
-def test_sum_typed():
+def test_sum_typed() raises:
     var a = array[int64]([1, 2, 3, 4, 5])
     var result = sum[int64](a)
     assert_equal(result, 15)
 
 
-def test_sum_with_nulls():
+def test_sum_with_nulls() raises:
     """Sum skips null values."""
     var a = PrimitiveBuilder[int32](3)
     a.append(10)
@@ -22,23 +22,23 @@ def test_sum_with_nulls():
     assert_equal(result, 30)
 
 
-def test_sum_all_nulls():
+def test_sum_all_nulls() raises:
     var a = nulls[int64](5)
     var result = sum[int64](a)
     assert_equal(result, 0)
 
 
-def test_sum_empty():
+def test_sum_empty() raises:
     var a = array[int32]()
     var result = sum[int32](a)
     assert_equal(result, 0)
 
 
-def test_sum_untyped():
+def test_sum_untyped() raises:
     var a = Array(array[int64]([1, 2, 3]))
     var result = sum(a)
     assert_equal(result, 6.0)
 
 
-def main():
+def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

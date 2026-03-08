@@ -3,7 +3,7 @@ from std.python import Python, PythonObject
 from marrow.c_data import *
 
 
-def test_schema_from_pyarrow():
+def test_schema_from_pyarrow() raises:
     var pa = Python.import_module("pyarrow")
     var pyint = pa.field("int_field", pa.int32())
     var pystring = pa.field("string_field", pa.string())
@@ -20,7 +20,7 @@ def test_schema_from_pyarrow():
     assert_equal(schema.fields[1].dtype, string)
 
 
-def test_primitive_array_from_pyarrow():
+def test_primitive_array_from_pyarrow() raises:
     var pa = Python.import_module("pyarrow")
     var pyarr = pa.array(
         Python.list(1, 2, 3, 4, 5),
@@ -53,7 +53,7 @@ def test_primitive_array_from_pyarrow():
     assert_equal(array.unsafe_get(4), 0)
 
 
-def test_binary_array_from_pyarrow():
+def test_binary_array_from_pyarrow() raises:
     var pa = Python.import_module("pyarrow")
 
     var pyarr = pa.array(
@@ -86,7 +86,7 @@ def test_binary_array_from_pyarrow():
     assert_equal(String(array.unsafe_get(2)), "")
 
 
-def test_list_array_from_pyarrow():
+def test_list_array_from_pyarrow() raises:
     var pa = Python.import_module("pyarrow")
 
     var pylist1 = Python.list(1, 2, 3)
@@ -123,7 +123,7 @@ def test_list_array_from_pyarrow():
     # assert_equal(values.unsafe_get(1), 2)
 
 
-def test_schema_from_dtype():
+def test_schema_from_dtype() raises:
     var c_schema = CArrowSchema.from_dtype(int32)
     var dtype = c_schema.to_dtype()
     assert_equal(dtype, int32)
@@ -141,7 +141,7 @@ def test_schema_from_dtype():
     assert_equal(dtype_float64, float64)
 
 
-def test_schema_to_field():
+def test_schema_to_field() raises:
     var pa = Python.import_module("pyarrow")
     var pyfield = pa.field(
         "test_field", pa.int32(), nullable=PythonObject(True)
@@ -162,7 +162,7 @@ def test_schema_to_field():
     assert_equal(field_str.nullable, False)
 
 
-def test_arrow_array_stream():
+def test_arrow_array_stream() raises:
     var pa = Python.import_module("pyarrow")
     var python = Python()
     ref cpython = python.cpython()
@@ -206,7 +206,7 @@ def test_arrow_array_stream():
     assert_equal(String(col2_array.unsafe_get(4)), "e")
 
 
-def test_struct_dtype_conversion():
+def test_struct_dtype_conversion() raises:
     var pa = Python.import_module("pyarrow")
 
     var struct_fields = Python.list(
@@ -224,7 +224,7 @@ def test_struct_dtype_conversion():
     assert_equal(dtype.fields[1].dtype, float64)
 
 
-def test_list_dtype_conversion():
+def test_list_dtype_conversion() raises:
     var pa = Python.import_module("pyarrow")
 
     var list_type = pa.list_(pa.int32())
@@ -235,7 +235,7 @@ def test_list_dtype_conversion():
     assert_equal(dtype.fields[0].dtype, int32)
 
 
-def test_fixed_size_list_dtype_conversion():
+def test_fixed_size_list_dtype_conversion() raises:
     """Format string +w:3 roundtrip through CArrowSchema."""
     var pa = Python.import_module("pyarrow")
 
@@ -248,7 +248,7 @@ def test_fixed_size_list_dtype_conversion():
     assert_equal(dtype.fields[0].dtype, float32)
 
 
-def test_fixed_size_list_from_pyarrow():
+def test_fixed_size_list_from_pyarrow() raises:
     """Import a FixedSizeList array from PyArrow."""
     var pa = Python.import_module("pyarrow")
 
@@ -289,7 +289,7 @@ def test_fixed_size_list_from_pyarrow():
     assert_equal(second.unsafe_get(2), 6)
 
 
-def test_numeric_dtypes():
+def test_numeric_dtypes() raises:
     var pa = Python.import_module("pyarrow")
 
     var types_to_test = [
@@ -330,5 +330,5 @@ def test_numeric_dtypes():
 #         pass
 
 
-def main():
+def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

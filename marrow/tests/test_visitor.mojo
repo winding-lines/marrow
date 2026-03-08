@@ -26,14 +26,14 @@ struct ElementCounter(ArrayVisitor):
         self.count += array.length
 
 
-def test_custom_visitor():
+def test_custom_visitor() raises:
     var a = array[int64]([10, 20, 30, 40])
     var counter = ElementCounter()
     counter.visit(Array(a^))
     assert_equal(counter.count, 4)
 
 
-def test_chunked_array_default_dispatch():
+def test_chunked_array_default_dispatch() raises:
     """ChunkedArray.visit default delegates to visit(Array) for each chunk."""
     var chunks = List[Array]()
     chunks.append(Array(array[int64]([1, 2, 3])))
@@ -44,5 +44,5 @@ def test_chunked_array_default_dispatch():
     assert_equal(counter.count, 5)
 
 
-def main():
+def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

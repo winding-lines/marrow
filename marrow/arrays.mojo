@@ -17,7 +17,9 @@ convert to/from `Array` via implicit constructors and `as_*()` accessors.
 
 from std.memory import memcpy
 from std.sys import size_of
-from gpu.host import DeviceContext
+from std.gpu.host import DeviceContext
+from std.python import PythonObject
+from std.python.conversions import ConvertibleFromPython, ConvertibleToPython
 from .buffers import Buffer, BufferBuilder
 from .bitmap import Bitmap, BitmapBuilder
 from .dtypes import *
@@ -118,6 +120,9 @@ struct Array(Copyable, Movable, Writable):
     fn write_to[W: Writer](self, mut writer: W):
         writer.write("ANYAD")
 
+    fn write_repr_to[W: Writer](self, mut writer: W):
+        writer.write("ANYAD")
+
     # fn __str__(self) -> String:
     #     from .pretty import ArrayPrinter
 
@@ -178,7 +183,7 @@ struct Array(Copyable, Movable, Writable):
 
 
 @fieldwise_init
-struct PrimitiveArray[T: DataType](Movable, Sized, Writable):
+struct PrimitiveArray[T: DataType](Copyable, Movable, Sized, Writable, ConvertibleFromPython, ConvertibleToPython):
     """An immutable Arrow array of fixed-size primitive values (integers, floats, etc.).
     """
 
@@ -224,6 +229,9 @@ struct PrimitiveArray[T: DataType](Movable, Sized, Writable):
         )
 
     fn write_to[W: Writer](self, mut writer: W):
+        writer.write("ANYAD")
+
+    fn write_repr_to[W: Writer](self, mut writer: W):
         writer.write("ANYAD")
 
     @always_inline
@@ -284,6 +292,38 @@ struct PrimitiveArray[T: DataType](Movable, Sized, Writable):
         )
 
 
+    @staticmethod
+    fn py_len(ptr: UnsafePointer[Self, MutAnyOrigin]) raises -> PythonObject:
+        return ptr[].length
+
+    @staticmethod
+    fn py_getitem(
+        ptr: UnsafePointer[Self, MutAnyOrigin], index: PythonObject
+    ) raises -> PythonObject:
+        var i = Int(py=index)
+        if i < 0 or i >= ptr[].length:
+            raise Error(
+                "index " + String(i) + " out of bounds for length " + String(ptr[].length)
+            )
+        return PythonObject(ptr[].unsafe_get(i))
+
+    @staticmethod
+    fn py_dtype(ptr: UnsafePointer[Self, MutAnyOrigin]) raises -> PythonObject:
+        return PythonObject(alloc=Self.T.copy())
+
+    @staticmethod
+    fn py_is_valid(
+        ptr: UnsafePointer[Self, MutAnyOrigin], index: PythonObject
+    ) raises -> PythonObject:
+        return ptr[].is_valid(Int(py=index))
+
+    fn to_python_object(var self) raises -> PythonObject:
+        return PythonObject(alloc=self^)
+
+    fn __init__(out self, *, py: PythonObject) raises:
+        self = py.downcast_value_ptr[Self]()[].copy()
+
+
 comptime BoolArray = PrimitiveArray[bool_]
 comptime Int8Array = PrimitiveArray[int8]
 comptime Int16Array = PrimitiveArray[int16]
@@ -298,7 +338,7 @@ comptime Float64Array = PrimitiveArray[float64]
 
 
 @fieldwise_init
-struct StringArray(Movable, Sized, Writable):
+struct StringArray(Copyable, Movable, Sized, Writable, ConvertibleFromPython, ConvertibleToPython):
     """An immutable Arrow array of variable-length UTF-8 strings."""
 
     var length: Int
@@ -349,6 +389,9 @@ struct StringArray(Movable, Sized, Writable):
     fn write_to[W: Writer](self, mut writer: W):
         writer.write("ANYAD")
 
+    fn write_repr_to[W: Writer](self, mut writer: W):
+        writer.write("ANYAD")
+
     fn is_valid(self, index: Int) -> Bool:
         """Return True if the element at the given index is not null."""
         if not self.bitmap:
@@ -388,8 +431,40 @@ struct StringArray(Movable, Sized, Writable):
         return self.unsafe_get(UInt(index))
 
 
+    @staticmethod
+    fn py_len(ptr: UnsafePointer[Self, MutAnyOrigin]) raises -> PythonObject:
+        return ptr[].length
+
+    @staticmethod
+    fn py_getitem(
+        ptr: UnsafePointer[Self, MutAnyOrigin], index: PythonObject
+    ) raises -> PythonObject:
+        var i = Int(py=index)
+        if i < 0 or i >= ptr[].length:
+            raise Error(
+                "index " + String(i) + " out of bounds for length " + String(ptr[].length)
+            )
+        return String(ptr[].unsafe_get(UInt(i)))
+
+    @staticmethod
+    fn py_dtype(ptr: UnsafePointer[Self, MutAnyOrigin]) raises -> PythonObject:
+        return PythonObject(alloc=string.copy())
+
+    @staticmethod
+    fn py_is_valid(
+        ptr: UnsafePointer[Self, MutAnyOrigin], index: PythonObject
+    ) raises -> PythonObject:
+        return ptr[].is_valid(Int(py=index))
+
+    fn to_python_object(var self) raises -> PythonObject:
+        return PythonObject(alloc=self^)
+
+    fn __init__(out self, *, py: PythonObject) raises:
+        self = py.downcast_value_ptr[Self]()[].copy()
+
+
 @fieldwise_init
-struct ListArray(Movable, Sized, Writable):
+struct ListArray(Copyable, Movable, Sized, Writable, ConvertibleFromPython, ConvertibleToPython):
     """An immutable Arrow array of variable-length lists (each element is a sub-array).
     """
 
@@ -427,6 +502,9 @@ struct ListArray(Movable, Sized, Writable):
     fn write_to[W: Writer](self, mut writer: W):
         writer.write("ANYAD")
 
+    fn write_repr_to[W: Writer](self, mut writer: W):
+        writer.write("ANYAD")
+
     fn is_valid(self, index: Int) -> Bool:
         if not self.bitmap:
             return True
@@ -446,9 +524,15 @@ struct ListArray(Movable, Sized, Writable):
         result.nulls = 0
         return result^
 
+    fn to_python_object(var self) raises -> PythonObject:
+        return PythonObject(alloc=self^)
+
+    fn __init__(out self, *, py: PythonObject) raises:
+        self = py.downcast_value_ptr[Self]()[].copy()
+
 
 @fieldwise_init
-struct FixedSizeListArray(Movable, Sized, Writable):
+struct FixedSizeListArray(Copyable, Movable, Sized, Writable, ConvertibleFromPython, ConvertibleToPython):
     """An immutable Arrow array of fixed-size lists (each element is a sub-array of the same length).
     """
 
@@ -478,10 +562,19 @@ struct FixedSizeListArray(Movable, Sized, Writable):
         self.bitmap = data.bitmap
         self.values = data.children[0].copy()
 
+    fn __init__(out self, *, py: PythonObject) raises:
+        self = py.downcast_value_ptr[Self]()[].copy()
+
+    fn to_python_object(var self) raises -> PythonObject:
+        return PythonObject(alloc=self^)
+
     fn __len__(self) -> Int:
         return self.length
 
     fn write_to[W: Writer](self, mut writer: W):
+        writer.write("ANYAD")
+
+    fn write_repr_to[W: Writer](self, mut writer: W):
         writer.write("ANYAD")
 
     fn is_valid(self, index: Int) -> Bool:
@@ -502,6 +595,42 @@ struct FixedSizeListArray(Movable, Sized, Writable):
             children=self.values.children.copy(),
             offset=start,
         )
+
+
+    @staticmethod
+    fn py_len(ptr: UnsafePointer[Self, MutAnyOrigin]) raises -> PythonObject:
+        return ptr[].length
+
+    @staticmethod
+    fn py_getitem(
+        py_self: PythonObject, index: PythonObject
+    ) raises -> PythonObject:
+        var ptr = py_self.downcast_value_ptr[Self]()
+        var i = Int(py=index)
+        if i < 0 or i >= ptr[].length:
+            raise Error(
+                "index " + String(i) + " out of bounds for length " + String(ptr[].length)
+            )
+        var sub = ptr[].unsafe_get(i)
+        var child_dtype = sub.dtype
+        comptime for T in all_numeric_dtypes:
+            if child_dtype == T:
+                return PythonObject(alloc=PrimitiveArray[T](sub))
+        raise Error("unsupported child dtype: " + String(child_dtype))
+
+    @staticmethod
+    fn py_list_size(ptr: UnsafePointer[Self, MutAnyOrigin]) raises -> PythonObject:
+        return ptr[].dtype.size
+
+    @staticmethod
+    fn py_dtype(ptr: UnsafePointer[Self, MutAnyOrigin]) raises -> PythonObject:
+        return PythonObject(alloc=ptr[].dtype.copy())
+
+    @staticmethod
+    fn py_is_valid(
+        ptr: UnsafePointer[Self, MutAnyOrigin], index: PythonObject
+    ) raises -> PythonObject:
+        return ptr[].is_valid(Int(py=index))
 
     fn to_device(self, ctx: DeviceContext) raises -> FixedSizeListArray:
         """Upload child values to the GPU."""
@@ -535,8 +664,10 @@ struct FixedSizeListArray(Movable, Sized, Writable):
         )
 
 
+
+
 @fieldwise_init
-struct StructArray(Movable, Sized, Writable):
+struct StructArray(Copyable, Movable, Sized, Writable, ConvertibleFromPython, ConvertibleToPython):
     """An immutable Arrow array of structs (each element is a collection of named fields).
     """
 
@@ -552,6 +683,12 @@ struct StructArray(Movable, Sized, Writable):
         self.nulls = data.nulls
         self.bitmap = data.bitmap
         self.children = data.children.copy()
+
+    fn __init__(out self, *, py: PythonObject) raises:
+        self = py.downcast_value_ptr[Self]()[].copy()
+
+    fn to_python_object(var self) raises -> PythonObject:
+        return PythonObject(alloc=self^)
 
     fn __len__(self) -> Int:
         return self.length
@@ -571,6 +708,10 @@ struct StructArray(Movable, Sized, Writable):
     ) raises -> ref[self.children[0]] Array:
         """Access the field with the given name in the struct."""
         return self.children[self._index_for_field_name(name)]
+
+
+
+
 
 
 struct ChunkedArray(Movable, Writable):

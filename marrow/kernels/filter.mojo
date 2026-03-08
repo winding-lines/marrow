@@ -55,7 +55,7 @@ from marrow.bitmap import Bitmap, BitmapBuilder
 from marrow.dtypes import DataType, bool_, uint32, string, all_numeric_dtypes
 
 from .boolean import count_true
-from .sum import sum as sum_kernel
+from .aggregate import sum as sum_kernel
 
 
 # ---------------------------------------------------------------------------

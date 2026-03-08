@@ -1,7 +1,7 @@
 from std.testing import assert_equal, assert_true, assert_false, TestSuite
 from std.sys import has_accelerator
 
-from gpu.host import DeviceContext
+from std.gpu.host import DeviceContext
 
 from marrow.arrays import array, arange, Array, PrimitiveArray
 from marrow.builders import PrimitiveBuilder
@@ -25,7 +25,7 @@ from marrow.kernels.arithmetic import (
 # ---------------------------------------------------------------------------
 
 
-def test_add_typed():
+def test_add_typed() raises:
     var a = array[int32]([1, 2, 3, 4])
     var b = array[int32]([10, 20, 30, 40])
     var result = add[int32](a, b)
@@ -36,7 +36,7 @@ def test_add_typed():
     assert_equal(result.unsafe_get(3), 44)
 
 
-def test_add_with_nulls():
+def test_add_with_nulls() raises:
     """Nulls propagate: null + valid = null."""
     var a = PrimitiveBuilder[int32](3)
     a.append(1)
@@ -53,7 +53,7 @@ def test_add_with_nulls():
     assert_equal(result.unsafe_get(1), 22)
 
 
-def test_add_length_mismatch():
+def test_add_length_mismatch() raises:
     var a = array[int32]([1, 2])
     var b = array[int32]([1, 2, 3])
     try:
@@ -63,7 +63,7 @@ def test_add_length_mismatch():
         pass
 
 
-def test_add_untyped():
+def test_add_untyped() raises:
     var a = Array(array[int64]([1, 2, 3]))
     var b = Array(array[int64]([4, 5, 6]))
     var result = add(a, b)
@@ -74,14 +74,14 @@ def test_add_untyped():
     assert_equal(typed.unsafe_get(2), 9)
 
 
-def test_add_empty():
+def test_add_empty() raises:
     var a = array[int32]()
     var b = array[int32]()
     var result = add[int32](a, b)
     assert_equal(len(result), 0)
 
 
-def test_add_float64():
+def test_add_float64() raises:
     var a = array[float64]([1, 2, 3, 4])
     var b = array[float64]([10, 20, 30, 40])
     var result = add[float64](a, b)
@@ -92,7 +92,7 @@ def test_add_float64():
     assert_true(result.unsafe_get(3) == 44)
 
 
-def test_add_large_array():
+def test_add_large_array() raises:
     """Exercise the SIMD fast path with an array larger than SIMD width."""
     var a = arange[int32](0, 1000)
     var b = arange[int32](0, 1000)
@@ -108,7 +108,7 @@ def test_add_large_array():
 # ---------------------------------------------------------------------------
 
 
-def test_sub_typed():
+def test_sub_typed() raises:
     var a = array[int32]([10, 20, 30, 40])
     var b = array[int32]([1, 2, 3, 4])
     var result = sub[int32](a, b)
@@ -118,7 +118,7 @@ def test_sub_typed():
     assert_equal(result.unsafe_get(3), 36)
 
 
-def test_sub_with_nulls():
+def test_sub_with_nulls() raises:
     var a = PrimitiveBuilder[int32](3)
     a.append(10)
     a.append(20)
@@ -133,7 +133,7 @@ def test_sub_with_nulls():
     assert_equal(result.unsafe_get(1), 18)
 
 
-def test_sub_untyped():
+def test_sub_untyped() raises:
     var a = Array(array[int64]([10, 20, 30]))
     var b = Array(array[int64]([1, 2, 3]))
     var result = sub(a, b)
@@ -148,7 +148,7 @@ def test_sub_untyped():
 # ---------------------------------------------------------------------------
 
 
-def test_mul_typed():
+def test_mul_typed() raises:
     var a = array[int32]([2, 3, 4, 5])
     var b = array[int32]([10, 10, 10, 10])
     var result = mul[int32](a, b)
@@ -158,7 +158,7 @@ def test_mul_typed():
     assert_equal(result.unsafe_get(3), 50)
 
 
-def test_mul_with_nulls():
+def test_mul_with_nulls() raises:
     var a = PrimitiveBuilder[int32](3)
     a.append(2)
     a.append(3)
@@ -173,7 +173,7 @@ def test_mul_with_nulls():
     assert_equal(result.unsafe_get(1), 30)
 
 
-def test_mul_large_array():
+def test_mul_large_array() raises:
     var a = arange[int32](0, 1000)
     var b = arange[int32](0, 1000)
     var result = mul[int32](a, b)
@@ -187,7 +187,7 @@ def test_mul_large_array():
 # ---------------------------------------------------------------------------
 
 
-def test_div_typed():
+def test_div_typed() raises:
     var a = array[float64]([10, 20, 30])
     var b = array[float64]([2, 4, 5])
     var result = div[float64](a, b)
@@ -196,7 +196,7 @@ def test_div_typed():
     assert_true(result.unsafe_get(2) == 6.0)
 
 
-def test_div_with_nulls():
+def test_div_with_nulls() raises:
     var a = PrimitiveBuilder[float64](3)
     a.append(10)
     a.append(20)
@@ -214,7 +214,7 @@ def test_div_with_nulls():
 # ---------------------------------------------------------------------------
 
 
-def test_floordiv_typed():
+def test_floordiv_typed() raises:
     var a = array[int32]([10, 20, 7, 15])
     var b = array[int32]([3, 7, 3, 4])
     var result = floordiv[int32](a, b)
@@ -229,7 +229,7 @@ def test_floordiv_typed():
 # ---------------------------------------------------------------------------
 
 
-def test_mod_typed():
+def test_mod_typed() raises:
     var a = array[int32]([10, 20, 7, 15])
     var b = array[int32]([3, 7, 3, 4])
     var result = mod[int32](a, b)
@@ -244,7 +244,7 @@ def test_mod_typed():
 # ---------------------------------------------------------------------------
 
 
-def test_min_typed():
+def test_min_typed() raises:
     var a = array[int32]([1, 5, 3, 8])
     var b = array[int32]([4, 2, 3, 6])
     var result = min_[int32](a, b)
@@ -254,7 +254,7 @@ def test_min_typed():
     assert_equal(result.unsafe_get(3), 6)
 
 
-def test_max_typed():
+def test_max_typed() raises:
     var a = array[int32]([1, 5, 3, 8])
     var b = array[int32]([4, 2, 3, 6])
     var result = max_[int32](a, b)
@@ -264,7 +264,7 @@ def test_max_typed():
     assert_equal(result.unsafe_get(3), 8)
 
 
-def test_min_with_nulls():
+def test_min_with_nulls() raises:
     var a = PrimitiveBuilder[int32](3)
     a.append(1)
     a.append(5)
@@ -284,7 +284,7 @@ def test_min_with_nulls():
 # ---------------------------------------------------------------------------
 
 
-def test_neg_typed():
+def test_neg_typed() raises:
     var a = array[int32]([1, -2, 0, 4])
     var result = neg[int32](a)
     assert_equal(result.unsafe_get(0), -1)
@@ -293,7 +293,7 @@ def test_neg_typed():
     assert_equal(result.unsafe_get(3), -4)
 
 
-def test_neg_with_nulls():
+def test_neg_with_nulls() raises:
     var a = PrimitiveBuilder[int32](3)
     a.append(1)
     a.append(-2)
@@ -307,7 +307,7 @@ def test_neg_with_nulls():
     assert_equal(result.unsafe_get(1), 2)
 
 
-def test_neg_large_array():
+def test_neg_large_array() raises:
     """Exercise the SIMD fast path."""
     var a = arange[int32](0, 1000)
     var result = neg[int32](a)
@@ -321,7 +321,7 @@ def test_neg_large_array():
 # ---------------------------------------------------------------------------
 
 
-def test_abs_typed():
+def test_abs_typed() raises:
     var a = array[int32]([-3, 0, 4, -1])
     var result = abs_[int32](a)
     assert_equal(result.unsafe_get(0), 3)
@@ -330,7 +330,7 @@ def test_abs_typed():
     assert_equal(result.unsafe_get(3), 1)
 
 
-def test_abs_with_nulls():
+def test_abs_with_nulls() raises:
     var a = PrimitiveBuilder[int32](3)
     a.append(-3)
     a.append(4)
@@ -344,7 +344,7 @@ def test_abs_with_nulls():
     assert_equal(result.unsafe_get(1), 4)
 
 
-def test_abs_large_array():
+def test_abs_large_array() raises:
     """Exercise the SIMD fast path."""
     var a = arange[int32](-500, 500)
     var result = abs_[int32](a)
@@ -358,7 +358,7 @@ def test_abs_large_array():
 # ---------------------------------------------------------------------------
 
 
-def test_add_gpu():
+def test_add_gpu() raises:
     """Element-wise add on GPU with small int32 arrays."""
     if not has_accelerator():
         return
@@ -374,7 +374,7 @@ def test_add_gpu():
     assert_equal(result.unsafe_get(3), 44)
 
 
-def test_add_gpu_large():
+def test_add_gpu_large() raises:
     """Exercise GPU add with a large array (10k elements)."""
     if not has_accelerator():
         return
@@ -389,7 +389,7 @@ def test_add_gpu_large():
     assert_equal(result.unsafe_get(9999), 19998)
 
 
-def test_add_gpu_float32():
+def test_add_gpu_float32() raises:
     """GPU add with float32 arrays."""
     if not has_accelerator():
         return
@@ -405,7 +405,7 @@ def test_add_gpu_float32():
     assert_true(result.unsafe_get(3) == 44)
 
 
-def test_device_round_trip():
+def test_device_round_trip() raises:
     """Upload array to GPU, download back, verify values."""
     if not has_accelerator():
         return
@@ -424,7 +424,7 @@ def test_device_round_trip():
     assert_equal(on_host.unsafe_get(999), 999)
 
 
-def test_chained_gpu_add():
+def test_chained_gpu_add() raises:
     """Chained GPU adds: (a + b) + c with device-resident intermediates."""
     if not has_accelerator():
         return
@@ -447,5 +447,5 @@ def test_chained_gpu_add():
     assert_equal(abc.unsafe_get(999), 2997)
 
 
-def main():
+def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

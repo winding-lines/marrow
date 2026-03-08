@@ -31,14 +31,14 @@ from marrow.dtypes import *
 # ---------------------------------------------------------------------------
 
 
-def test_bool_builder_zero_length():
+def test_bool_builder_zero_length() raises:
     var b = BoolBuilder()
     assert_equal(len(b), 0)
     var frozen = b.finish()
     assert_equal(frozen.length, 0)
 
 
-def test_bool_builder_append_null():
+def test_bool_builder_append_null() raises:
     var b = BoolBuilder()
     b.append(True)
     b.append_null()
@@ -52,7 +52,7 @@ def test_bool_builder_append_null():
     assert_false(frozen.unsafe_get(2))
 
 
-def test_bool_builder_null_count():
+def test_bool_builder_null_count() raises:
     var b = BoolBuilder(4)
     b.append(True)
     b.append_null()
@@ -62,7 +62,7 @@ def test_bool_builder_null_count():
     assert_equal(frozen.null_count(), 2)
 
 
-def test_bool_builder_all_nulls():
+def test_bool_builder_all_nulls() raises:
     var b = BoolBuilder(3)
     b.append_null()
     b.append_null()
@@ -74,7 +74,7 @@ def test_bool_builder_all_nulls():
         assert_false(frozen.is_valid(i))
 
 
-def test_bool_builder_all_false():
+def test_bool_builder_all_false() raises:
     var b = BoolBuilder(3)
     b.append(False)
     b.append(False)
@@ -87,7 +87,7 @@ def test_bool_builder_all_false():
         assert_false(frozen.unsafe_get(i))
 
 
-def test_bool_builder_as_builder():
+def test_bool_builder_as_builder() raises:
     var b = BoolBuilder(2)
     b.append(True)
     b.append(False)
@@ -100,7 +100,7 @@ def test_bool_builder_as_builder():
 # ---------------------------------------------------------------------------
 
 
-def test_primitive_builder_int16():
+def test_primitive_builder_int16() raises:
     var b = PrimitiveBuilder[int16](2)
     b.append(32767)
     b.append(-32768)
@@ -109,7 +109,7 @@ def test_primitive_builder_int16():
     assert_equal(frozen.unsafe_get(1), -32768)
 
 
-def test_primitive_builder_uint32():
+def test_primitive_builder_uint32() raises:
     var b = PrimitiveBuilder[uint32](2)
     b.append(0)
     b.append(42)
@@ -118,7 +118,7 @@ def test_primitive_builder_uint32():
     assert_equal(frozen.unsafe_get(1), 42)
 
 
-def test_primitive_builder_float32():
+def test_primitive_builder_float32() raises:
     var b = PrimitiveBuilder[float32](3)
     b.append(1.5)
     b.append(0.0)
@@ -130,7 +130,7 @@ def test_primitive_builder_float32():
     assert_true(frozen.is_valid(2))
 
 
-def test_primitive_builder_float64():
+def test_primitive_builder_float64() raises:
     var b = PrimitiveBuilder[float64](2)
     b.append(1.0)
     b.append_null()
@@ -140,7 +140,7 @@ def test_primitive_builder_float64():
     assert_false(frozen.is_valid(1))
 
 
-def test_primitive_builder_capacity_doubling():
+def test_primitive_builder_capacity_doubling() raises:
     """Builder doubles capacity starting from zero capacity."""
     var b = PrimitiveBuilder[int32]()
     b.append(0)
@@ -160,7 +160,7 @@ def test_primitive_builder_capacity_doubling():
     assert_equal(frozen.unsafe_get(9), 9)
 
 
-def test_primitive_builder_as_builder():
+def test_primitive_builder_as_builder() raises:
     var b = PrimitiveBuilder[int64](3)
     b.append(1)
     b.append(2)
@@ -170,7 +170,7 @@ def test_primitive_builder_as_builder():
     assert_equal(builder.data[].dtype, int64)
 
 
-def test_primitive_builder_null_count():
+def test_primitive_builder_null_count() raises:
     var b = PrimitiveBuilder[int32](5)
     b.append(1)
     b.append_null()
@@ -181,7 +181,7 @@ def test_primitive_builder_null_count():
     assert_equal(frozen.null_count(), 3)
 
 
-def test_primitive_builder_all_nulls():
+def test_primitive_builder_all_nulls() raises:
     var b = PrimitiveBuilder[int64](4)
     for _ in range(4):
         b.append_null()
@@ -197,7 +197,7 @@ def test_primitive_builder_all_nulls():
 # ---------------------------------------------------------------------------
 
 
-def test_string_builder_append_null():
+def test_string_builder_append_null() raises:
     var b = StringBuilder(3)
     b.append("hello")
     b.append_null()
@@ -211,7 +211,7 @@ def test_string_builder_append_null():
     assert_equal(String(frozen.unsafe_get(2)), "world")
 
 
-def test_string_builder_null_count():
+def test_string_builder_null_count() raises:
     var b = StringBuilder()
     b.append("a")
     b.append_null()
@@ -225,7 +225,7 @@ def test_string_builder_null_count():
     assert_true(frozen.is_valid(3))
 
 
-def test_string_builder_empty_string():
+def test_string_builder_empty_string() raises:
     var b = StringBuilder(3)
     b.append("")
     b.append("x")
@@ -237,7 +237,7 @@ def test_string_builder_empty_string():
     assert_equal(String(frozen.unsafe_get(2)), "")
 
 
-def test_string_builder_offsets_correct():
+def test_string_builder_offsets_correct() raises:
     """Null entry must not advance the offset; valid entries advance by len."""
     var b = StringBuilder(4)
     b.append("ab")  # bytes [0..2)
@@ -251,7 +251,7 @@ def test_string_builder_offsets_correct():
     assert_equal(String(frozen.unsafe_get(3)), "f")
 
 
-def test_string_builder_all_nulls():
+def test_string_builder_all_nulls() raises:
     var b = StringBuilder(2)
     b.append_null()
     b.append_null()
@@ -261,7 +261,7 @@ def test_string_builder_all_nulls():
     assert_false(frozen.is_valid(1))
 
 
-def test_string_builder_capacity_growth():
+def test_string_builder_capacity_growth() raises:
     """Builder grows when appending beyond initial capacity."""
     var b = StringBuilder(1)
     b.append("first")
@@ -274,7 +274,7 @@ def test_string_builder_capacity_growth():
     assert_equal(String(frozen.unsafe_get(2)), "third")
 
 
-def test_string_builder_as_builder():
+def test_string_builder_as_builder() raises:
     var b = StringBuilder(1)
     b.append("test")
     var builder: Builder = b^
@@ -287,7 +287,7 @@ def test_string_builder_as_builder():
 # ---------------------------------------------------------------------------
 
 
-def test_list_builder_empty():
+def test_list_builder_empty() raises:
     var child = PrimitiveBuilder[int32]()
     var b = ListBuilder(child^)
     var frozen = b.finish()
@@ -295,7 +295,7 @@ def test_list_builder_empty():
     assert_true(frozen.dtype.is_list())
 
 
-def test_list_builder_append_null():
+def test_list_builder_append_null() raises:
     var child = PrimitiveBuilder[int64]()
     var b = ListBuilder(child^)
     b.append(True)
@@ -308,7 +308,7 @@ def test_list_builder_append_null():
     assert_true(frozen.is_valid(2))
 
 
-def test_list_builder_null_count():
+def test_list_builder_null_count() raises:
     var child = PrimitiveBuilder[int32]()
     var b = ListBuilder(child^)
     b.append(True)
@@ -323,7 +323,7 @@ def test_list_builder_null_count():
     assert_true(frozen.is_valid(3))
 
 
-def test_list_builder_empty_list():
+def test_list_builder_empty_list() raises:
     """A valid but empty list (zero child elements) is valid."""
     var child = PrimitiveBuilder[int64]()
     var b = ListBuilder(child^)
@@ -335,13 +335,13 @@ def test_list_builder_empty_list():
     assert_equal(inner.length, 0)
 
 
-def test_list_builder_dtype():
+def test_list_builder_dtype() raises:
     var child = PrimitiveBuilder[int64]()
     var b = ListBuilder(child^)
     assert_equal(b.data[].dtype, list_(int64))
 
 
-def test_list_builder_child_accessor():
+def test_list_builder_child_accessor() raises:
     var child = PrimitiveBuilder[int32](4)
     child.append(10)
     var b = ListBuilder(child^)
@@ -349,7 +349,7 @@ def test_list_builder_child_accessor():
     assert_equal(child_arc.data[].length, 1)
 
 
-def test_list_builder_multiple_nulls_offsets():
+def test_list_builder_multiple_nulls_offsets() raises:
     """Multiple null entries must not advance child offsets."""
     var child = PrimitiveBuilder[int32]()
     child.append(1)
@@ -369,7 +369,7 @@ def test_list_builder_multiple_nulls_offsets():
     assert_equal(first.unsafe_get(1), 2)
 
 
-def test_list_builder_string_child():
+def test_list_builder_string_child() raises:
     var str_b = StringBuilder()
     str_b.append("hello")
     str_b.append("world")
@@ -387,7 +387,7 @@ def test_list_builder_string_child():
 # ---------------------------------------------------------------------------
 
 
-def test_fixed_size_list_builder_zero_length():
+def test_fixed_size_list_builder_zero_length() raises:
     var child = PrimitiveBuilder[int32]()
     var b = FixedSizeListBuilder(child, list_size=4)
     var frozen = b.finish()
@@ -396,7 +396,7 @@ def test_fixed_size_list_builder_zero_length():
     assert_equal(frozen.dtype.size, 4)
 
 
-def test_fixed_size_list_builder_float32():
+def test_fixed_size_list_builder_float32() raises:
     var child = PrimitiveBuilder[float32](4)
     child.append(1.0)
     child.append(2.0)
@@ -413,7 +413,7 @@ def test_fixed_size_list_builder_float32():
     assert_equal(second.length, 2)
 
 
-def test_fixed_size_list_builder_with_nulls():
+def test_fixed_size_list_builder_with_nulls() raises:
     var child = PrimitiveBuilder[int64](6)
     child.append(0)
     child.append(1)
@@ -432,13 +432,13 @@ def test_fixed_size_list_builder_with_nulls():
     assert_true(frozen.is_valid(2))
 
 
-def test_fixed_size_list_builder_dtype():
+def test_fixed_size_list_builder_dtype() raises:
     var child = PrimitiveBuilder[int32]()
     var b = FixedSizeListBuilder(child, list_size=3)
     assert_equal(b.data[].dtype, fixed_size_list_(int32, 3))
 
 
-def test_fixed_size_list_builder_child_accessor():
+def test_fixed_size_list_builder_child_accessor() raises:
     var child = PrimitiveBuilder[int64](2)
     child.append(100)
     child.append(200)
@@ -447,7 +447,7 @@ def test_fixed_size_list_builder_child_accessor():
     assert_equal(child_arc.data[].length, 2)
 
 
-def test_fixed_size_list_builder_size1():
+def test_fixed_size_list_builder_size1() raises:
     """FixedSizeList of size 1 — each entry is a single-element list."""
     var child = PrimitiveBuilder[int32](3)
     child.append(7)
@@ -471,7 +471,7 @@ def test_fixed_size_list_builder_size1():
 # ---------------------------------------------------------------------------
 
 
-def test_struct_builder_zero_length():
+def test_struct_builder_zero_length() raises:
     var fields = List[Field]()
     var children = List[Builder]()
     var sb = StructBuilder(fields^, children^)
@@ -480,7 +480,7 @@ def test_struct_builder_zero_length():
     assert_true(frozen.dtype.is_struct())
 
 
-def test_struct_builder_append_valid():
+def test_struct_builder_append_valid() raises:
     """Struct validity tracks correct; child builders drive field values."""
     var id_b = PrimitiveBuilder[int64](3)
     id_b.append(1)
@@ -511,7 +511,7 @@ def test_struct_builder_append_valid():
     assert_equal(frozen.nulls, 0)
 
 
-def test_struct_builder_append_null():
+def test_struct_builder_append_null() raises:
     """Null struct entries — validity bitmap reflects nulls."""
     var id_b = PrimitiveBuilder[int32](2)
     id_b.append(10)
@@ -530,7 +530,7 @@ def test_struct_builder_append_null():
     assert_false(frozen.bitmap.value().is_valid(1))
 
 
-def test_struct_builder_field_values_accessible():
+def test_struct_builder_field_values_accessible() raises:
     """Child field values are accessible after finish."""
     var x_b = PrimitiveBuilder[int32](2)
     x_b.append(42)
@@ -551,7 +551,7 @@ def test_struct_builder_field_values_accessible():
     assert_equal(x_arr.unsafe_get(1), 99)
 
 
-def test_struct_builder_multi_type_fields():
+def test_struct_builder_multi_type_fields() raises:
     """Struct with primitive, string, and bool fields."""
     var id_b = PrimitiveBuilder[int64](2)
     id_b.append(1)
@@ -583,7 +583,7 @@ def test_struct_builder_multi_type_fields():
     assert_equal(frozen.dtype.fields[2].name, "active")
 
 
-def test_struct_builder_child_accessor():
+def test_struct_builder_child_accessor() raises:
     var x_b = PrimitiveBuilder[int32](1)
     x_b.append(7)
     var y_b = PrimitiveBuilder[int32](1)
@@ -602,7 +602,7 @@ def test_struct_builder_child_accessor():
     assert_equal(sb.child(1).data[].length, 1)
 
 
-def test_struct_builder_capacity_growth():
+def test_struct_builder_capacity_growth() raises:
     var id_b = PrimitiveBuilder[int32]()
     id_b.append(0)
     id_b.append(1)
@@ -621,7 +621,7 @@ def test_struct_builder_capacity_growth():
     assert_equal(frozen.length, 5)
 
 
-def test_struct_builder_field_names_preserved():
+def test_struct_builder_field_names_preserved() raises:
     """Field names survive builder → finish cycle."""
     var a_b = PrimitiveBuilder[int8](1)
     a_b.append(1)
@@ -646,13 +646,13 @@ def test_struct_builder_field_names_preserved():
 # ---------------------------------------------------------------------------
 
 
-def test_factory_array_empty():
+def test_factory_array_empty() raises:
     var a = array[int32]()
     assert_equal(len(a), 0)
     assert_equal(a.null_count(), 0)
 
 
-def test_factory_array_bool_with_nulls():
+def test_factory_array_bool_with_nulls() raises:
     var a = array([True, None, False, None, True])
     assert_equal(len(a), 5)
     assert_equal(a.null_count(), 2)
@@ -666,13 +666,13 @@ def test_factory_array_bool_with_nulls():
     assert_true(a.unsafe_get(4))
 
 
-def test_factory_array_bool_all_nulls():
+def test_factory_array_bool_all_nulls() raises:
     var a = array([None, None, None])
     assert_equal(len(a), 3)
     assert_equal(a.null_count(), 3)
 
 
-def test_factory_array_int_with_nulls():
+def test_factory_array_int_with_nulls() raises:
     var a = array[int32]([1, None, 3, None, 5])
     assert_equal(len(a), 5)
     assert_equal(a.null_count(), 2)
@@ -684,7 +684,7 @@ def test_factory_array_int_with_nulls():
     assert_false(a.is_valid(3))
 
 
-def test_factory_array_int_all_valid():
+def test_factory_array_int_all_valid() raises:
     var a = array[int64]([10, 20, 30])
     assert_equal(len(a), 3)
     assert_equal(a.null_count(), 0)
@@ -693,7 +693,7 @@ def test_factory_array_int_all_valid():
     assert_equal(a.unsafe_get(2), 30)
 
 
-def test_factory_nulls_all_invalid():
+def test_factory_nulls_all_invalid() raises:
     var a = nulls[int64](5)
     assert_equal(len(a), 5)
     assert_equal(a.null_count(), 5)
@@ -701,18 +701,18 @@ def test_factory_nulls_all_invalid():
         assert_false(a.is_valid(i))
 
 
-def test_factory_nulls_zero():
+def test_factory_nulls_zero() raises:
     var a = nulls[int32](0)
     assert_equal(len(a), 0)
 
 
-def test_factory_nulls_one():
+def test_factory_nulls_one() raises:
     var a = nulls[int8](1)
     assert_equal(len(a), 1)
     assert_false(a.is_valid(0))
 
 
-def test_factory_arange_validity():
+def test_factory_arange_validity() raises:
     var a = arange[int32](0, 5)
     assert_equal(len(a), 5)
     assert_equal(a.null_count(), 0)
@@ -722,20 +722,20 @@ def test_factory_arange_validity():
     assert_equal(a.unsafe_get(4), 4)
 
 
-def test_factory_arange_non_zero_start():
+def test_factory_arange_non_zero_start() raises:
     var a = arange[int64](10, 15)
     assert_equal(len(a), 5)
     assert_equal(a.unsafe_get(0), 10)
     assert_equal(a.unsafe_get(4), 14)
 
 
-def test_factory_arange_single():
+def test_factory_arange_single() raises:
     var a = arange[int32](7, 8)
     assert_equal(len(a), 1)
     assert_equal(a.unsafe_get(0), 7)
 
 
-def test_factory_arange_empty():
+def test_factory_arange_empty() raises:
     var a = arange[int32](3, 3)
     assert_equal(len(a), 0)
 
@@ -752,7 +752,7 @@ def test_factory_arange_empty():
 #   uint32 offs: 129 * 4  = 516 bytes before shrink → 64 bytes after (3 offs)
 
 
-def test_primitive_builder_finish_shrinks_data_buffer():
+def test_primitive_builder_finish_shrinks_data_buffer() raises:
     """Finish() shrinks the data buffer to fit the actual element count."""
     var b = PrimitiveBuilder[int32](128)
     b.append(1)
@@ -764,7 +764,7 @@ def test_primitive_builder_finish_shrinks_data_buffer():
     assert_equal(frozen.buffer.size, 64)
 
 
-def test_string_builder_finish_shrinks_offsets_buffer():
+def test_string_builder_finish_shrinks_offsets_buffer() raises:
     """Finish() shrinks the offsets buffer to (length+1) uint32 entries."""
     var b = StringBuilder(128)
     b.append("hello")
@@ -776,7 +776,7 @@ def test_string_builder_finish_shrinks_offsets_buffer():
     assert_equal(frozen.offsets.size, 64)
 
 
-def test_list_builder_finish_shrinks_offsets_buffer():
+def test_list_builder_finish_shrinks_offsets_buffer() raises:
     """Finish() shrinks the offsets buffer to (length+1) uint32 entries."""
     var child = PrimitiveBuilder[int32]()
     child.append(10)
@@ -792,7 +792,7 @@ def test_list_builder_finish_shrinks_offsets_buffer():
     assert_equal(frozen.offsets.size, 64)
 
 
-def test_primitive_builder_finish_with_nulls_shrinks_bitmap():
+def test_primitive_builder_finish_with_nulls_shrinks_bitmap() raises:
     """Finish() with nulls resizes the bitmap to fit exactly `length` bits."""
     var b = PrimitiveBuilder[int32](128)
     b.append(1)
@@ -804,7 +804,7 @@ def test_primitive_builder_finish_with_nulls_shrinks_bitmap():
     assert_equal(frozen.bitmap.value()._buffer.size, 64)
 
 
-def test_builder_finish_dispatch_primitive():
+def test_builder_finish_dispatch_primitive() raises:
     """Builder.finish() dispatches to PrimitiveBuilder.finish() and returns Array.
     """
     var b = PrimitiveBuilder[int32](10)
@@ -819,7 +819,7 @@ def test_builder_finish_dispatch_primitive():
     assert_equal(arr.buffers[0].size, 64)
 
 
-def test_builder_finish_dispatch_string():
+def test_builder_finish_dispatch_string() raises:
     """Builder.finish() dispatches to StringBuilder.finish() and returns Array.
     """
     var b = StringBuilder(10)
@@ -832,7 +832,7 @@ def test_builder_finish_dispatch_string():
     assert_equal(arr.buffers[0].size, 64)
 
 
-def test_builder_finish_dispatch_list():
+def test_builder_finish_dispatch_list() raises:
     """Builder.finish() dispatches to ListBuilder.finish() and returns Array."""
     var child = PrimitiveBuilder[int32]()
     child.append(1)
@@ -847,5 +847,5 @@ def test_builder_finish_dispatch_list():
     assert_equal(arr.buffers[0].size, 64)
 
 
-def main():
+def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
