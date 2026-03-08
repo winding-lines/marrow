@@ -183,7 +183,14 @@ struct Array(Copyable, Movable, Writable):
 
 
 @fieldwise_init
-struct PrimitiveArray[T: DataType](Copyable, Movable, Sized, Writable, ConvertibleFromPython, ConvertibleToPython):
+struct PrimitiveArray[T: DataType](
+    ConvertibleFromPython,
+    ConvertibleToPython,
+    Copyable,
+    Movable,
+    Sized,
+    Writable,
+):
     """An immutable Arrow array of fixed-size primitive values (integers, floats, etc.).
     """
 
@@ -291,7 +298,6 @@ struct PrimitiveArray[T: DataType](Copyable, Movable, Sized, Writable, Convertib
             buffer=self.buffer.to_cpu(ctx),
         )
 
-
     @staticmethod
     fn py_len(ptr: UnsafePointer[Self, MutAnyOrigin]) raises -> PythonObject:
         return ptr[].length
@@ -303,7 +309,10 @@ struct PrimitiveArray[T: DataType](Copyable, Movable, Sized, Writable, Convertib
         var i = Int(py=index)
         if i < 0 or i >= ptr[].length:
             raise Error(
-                "index " + String(i) + " out of bounds for length " + String(ptr[].length)
+                "index "
+                + String(i)
+                + " out of bounds for length "
+                + String(ptr[].length)
             )
         return PythonObject(ptr[].unsafe_get(i))
 
@@ -338,7 +347,14 @@ comptime Float64Array = PrimitiveArray[float64]
 
 
 @fieldwise_init
-struct StringArray(Copyable, Movable, Sized, Writable, ConvertibleFromPython, ConvertibleToPython):
+struct StringArray(
+    ConvertibleFromPython,
+    ConvertibleToPython,
+    Copyable,
+    Movable,
+    Sized,
+    Writable,
+):
     """An immutable Arrow array of variable-length UTF-8 strings."""
 
     var length: Int
@@ -430,7 +446,6 @@ struct StringArray(Copyable, Movable, Sized, Writable, ConvertibleFromPython, Co
             )
         return self.unsafe_get(UInt(index))
 
-
     @staticmethod
     fn py_len(ptr: UnsafePointer[Self, MutAnyOrigin]) raises -> PythonObject:
         return ptr[].length
@@ -442,7 +457,10 @@ struct StringArray(Copyable, Movable, Sized, Writable, ConvertibleFromPython, Co
         var i = Int(py=index)
         if i < 0 or i >= ptr[].length:
             raise Error(
-                "index " + String(i) + " out of bounds for length " + String(ptr[].length)
+                "index "
+                + String(i)
+                + " out of bounds for length "
+                + String(ptr[].length)
             )
         return String(ptr[].unsafe_get(UInt(i)))
 
@@ -464,7 +482,14 @@ struct StringArray(Copyable, Movable, Sized, Writable, ConvertibleFromPython, Co
 
 
 @fieldwise_init
-struct ListArray(Copyable, Movable, Sized, Writable, ConvertibleFromPython, ConvertibleToPython):
+struct ListArray(
+    ConvertibleFromPython,
+    ConvertibleToPython,
+    Copyable,
+    Movable,
+    Sized,
+    Writable,
+):
     """An immutable Arrow array of variable-length lists (each element is a sub-array).
     """
 
@@ -532,7 +557,14 @@ struct ListArray(Copyable, Movable, Sized, Writable, ConvertibleFromPython, Conv
 
 
 @fieldwise_init
-struct FixedSizeListArray(Copyable, Movable, Sized, Writable, ConvertibleFromPython, ConvertibleToPython):
+struct FixedSizeListArray(
+    ConvertibleFromPython,
+    ConvertibleToPython,
+    Copyable,
+    Movable,
+    Sized,
+    Writable,
+):
     """An immutable Arrow array of fixed-size lists (each element is a sub-array of the same length).
     """
 
@@ -596,7 +628,6 @@ struct FixedSizeListArray(Copyable, Movable, Sized, Writable, ConvertibleFromPyt
             offset=start,
         )
 
-
     @staticmethod
     fn py_len(ptr: UnsafePointer[Self, MutAnyOrigin]) raises -> PythonObject:
         return ptr[].length
@@ -609,7 +640,10 @@ struct FixedSizeListArray(Copyable, Movable, Sized, Writable, ConvertibleFromPyt
         var i = Int(py=index)
         if i < 0 or i >= ptr[].length:
             raise Error(
-                "index " + String(i) + " out of bounds for length " + String(ptr[].length)
+                "index "
+                + String(i)
+                + " out of bounds for length "
+                + String(ptr[].length)
             )
         var sub = ptr[].unsafe_get(i)
         var child_dtype = sub.dtype
@@ -619,7 +653,9 @@ struct FixedSizeListArray(Copyable, Movable, Sized, Writable, ConvertibleFromPyt
         raise Error("unsupported child dtype: " + String(child_dtype))
 
     @staticmethod
-    fn py_list_size(ptr: UnsafePointer[Self, MutAnyOrigin]) raises -> PythonObject:
+    fn py_list_size(
+        ptr: UnsafePointer[Self, MutAnyOrigin]
+    ) raises -> PythonObject:
         return ptr[].dtype.size
 
     @staticmethod
@@ -664,10 +700,15 @@ struct FixedSizeListArray(Copyable, Movable, Sized, Writable, ConvertibleFromPyt
         )
 
 
-
-
 @fieldwise_init
-struct StructArray(Copyable, Movable, Sized, Writable, ConvertibleFromPython, ConvertibleToPython):
+struct StructArray(
+    ConvertibleFromPython,
+    ConvertibleToPython,
+    Copyable,
+    Movable,
+    Sized,
+    Writable,
+):
     """An immutable Arrow array of structs (each element is a collection of named fields).
     """
 
@@ -708,10 +749,6 @@ struct StructArray(Copyable, Movable, Sized, Writable, ConvertibleFromPython, Co
     ) raises -> ref[self.children[0]] Array:
         """Access the field with the given name in the struct."""
         return self.children[self._index_for_field_name(name)]
-
-
-
-
 
 
 struct ChunkedArray(Movable, Writable):

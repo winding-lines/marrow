@@ -144,7 +144,14 @@ comptime LIST_VIEW: UInt8 = 41
 comptime LARGE_LIST_VIEW: UInt8 = 42
 
 
-struct Field(ImplicitlyCopyable, Movable, Equatable, Writable, ConvertibleFromPython, ConvertibleToPython):
+struct Field(
+    ConvertibleFromPython,
+    ConvertibleToPython,
+    Equatable,
+    ImplicitlyCopyable,
+    Movable,
+    Writable,
+):
     var name: String
     var dtype: DataType
     var nullable: Bool
@@ -160,20 +167,32 @@ struct Field(ImplicitlyCopyable, Movable, Equatable, Writable, ConvertibleFromPy
         self = py.downcast_value_ptr[Field]()[]
 
     fn __eq__(self, other: Self) -> Bool:
-        return self.name == other.name and self.dtype == other.dtype and self.nullable == other.nullable
+        return (
+            self.name == other.name
+            and self.dtype == other.dtype
+            and self.nullable == other.nullable
+        )
 
     fn write_to[W: Writer](self, mut writer: W):
         writer.write(self.name, ": ", self.dtype)
 
     fn write_repr_to[W: Writer](self, mut writer: W):
-        writer.write("Field(name=", self.name, ", nullable=", self.nullable, ")")
+        writer.write(
+            "Field(name=", self.name, ", nullable=", self.nullable, ")"
+        )
 
     fn to_python_object(var self) raises -> PythonObject:
         return PythonObject(alloc=self^)
 
 
-
-struct DataType(ImplicitlyCopyable, Movable, Equatable, Writable, ConvertibleFromPython, ConvertibleToPython):
+struct DataType(
+    ConvertibleFromPython,
+    ConvertibleToPython,
+    Equatable,
+    ImplicitlyCopyable,
+    Movable,
+    Writable,
+):
     var code: UInt8
     var native: DType
     var fields: List[Field]
@@ -288,7 +307,6 @@ struct DataType(ImplicitlyCopyable, Movable, Equatable, Writable, ConvertibleFro
             writer.write("struct")
         else:
             writer.write("unknown {}".format(self.code))
-
 
     @always_inline
     fn is_bool(self) -> Bool:
