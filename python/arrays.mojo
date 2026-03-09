@@ -219,19 +219,7 @@ struct PyArrayBuilder(Copyable, Movable):
     fn extend(mut self, obj: PythonObject) raises:
         """Append a full Python sequence. Dispatches once to a type-specific path."""
         var dtype = self._b.data[].dtype
-        comptime for T in [
-            dt.bool_,
-            dt.int8,
-            dt.int16,
-            dt.int32,
-            dt.int64,
-            dt.uint8,
-            dt.uint16,
-            dt.uint32,
-            dt.uint64,
-            dt.float32,
-            dt.float64,
-        ]:
+        comptime for T in dt.primitive_dtypes:
             if dtype == T:
                 self._extend_primitive[T](obj)
                 return
@@ -251,19 +239,7 @@ struct PyArrayBuilder(Copyable, Movable):
     fn append(mut self, value: PythonObject) raises:
         """Append a single Python value."""
         var dtype = self._b.data[].dtype
-        comptime for T in [
-            dt.bool_,
-            dt.int8,
-            dt.int16,
-            dt.int32,
-            dt.int64,
-            dt.uint8,
-            dt.uint16,
-            dt.uint32,
-            dt.uint64,
-            dt.float32,
-            dt.float64,
-        ]:
+        comptime for T in dt.primitive_dtypes:
             if dtype == T:
                 self._append_primitive[T](value)
                 return
@@ -280,19 +256,7 @@ struct PyArrayBuilder(Copyable, Movable):
 
     fn finish(mut self) raises -> PythonObject:
         var dtype = self._b.data[].dtype
-        comptime for T in [
-            dt.bool_,
-            dt.int8,
-            dt.int16,
-            dt.int32,
-            dt.int64,
-            dt.uint8,
-            dt.uint16,
-            dt.uint32,
-            dt.uint64,
-            dt.float32,
-            dt.float64,
-        ]:
+        comptime for T in dt.primitive_dtypes:
             if dtype == T:
                 var b = bld.PrimitiveBuilder[T](self._b.data)
                 return b.finish().to_python_object()

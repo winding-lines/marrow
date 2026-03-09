@@ -455,7 +455,7 @@ comptime float64 = DataType(code=FLOAT64, native=DType.float64)
 comptime string = DataType(code=STRING)
 comptime binary = DataType(code=BINARY)
 
-comptime all_numeric_dtypes = [
+comptime numeric_dtypes = [
     int8,
     int16,
     int32,
@@ -468,3 +468,4 @@ comptime all_numeric_dtypes = [
     float32,
     float64,
 ]
+comptime primitive_dtypes = [bool_] + numeric_dtypes

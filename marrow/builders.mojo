@@ -47,6 +47,7 @@ from .arrays import (
 # ---------------------------------------------------------------------------
 
 
+@fieldwise_init
 struct BuilderData(Movable):
     """Internal mutable builder data — the mutable counterpart of `Array`.
 
@@ -56,7 +57,6 @@ struct BuilderData(Movable):
       - `children` — child builders for nested types, each an `ArcPointer[BuilderData]`
 
     Wrap in `ArcPointer[BuilderData]` (or use the `Builder` wrapper) for shared ownership.
-    Call `finish()` to consume and produce an immutable `Array`.
     """
 
     var dtype: DataType
@@ -67,69 +67,6 @@ struct BuilderData(Movable):
     # TODO: only required arcpointer for bufferbuilders because List requires copyable elements
     var buffers: List[ArcPointer[BufferBuilder]]
     var children: List[ArcPointer[BuilderData]]
-
-    fn __init__(
-        out self,
-        var dtype: DataType,
-        length: Int,
-        capacity: Int,
-        var bitmap: BitmapBuilder,
-        var buffers: List[ArcPointer[BufferBuilder]],
-        var children: List[ArcPointer[BuilderData]],
-    ):
-        self.dtype = dtype^
-        self.length = length
-        self.capacity = capacity
-        self.null_count = 0
-        self.bitmap = bitmap^
-        self.buffers = buffers^
-        self.children = children^
-
-    fn __len__(self) -> Int:
-        return self.length
-
-    fn finish(mut self) raises -> Array:
-        """Snapshot the builder into an immutable `Array` and reset state.
-
-        After this call the builder is reset to empty (length=0, capacity=0).
-        Each buffer and bitmap is transferred to the returned Array; fresh
-        empty allocations are installed so the builder can be reused.
-
-        When null_count == 0 the validity bitmap is discarded (Arrow spec
-        allows omitting it). Callers must shrink data buffers to their actual
-        used size before calling this method.
-        """
-        var null_count = self.null_count
-        var frozen_bitmap: Optional[Bitmap] = None
-        if null_count != 0:
-            frozen_bitmap = self.bitmap.finish(self.length)
-        var result = Array(
-            dtype=self.dtype.copy(),
-            length=self.length,
-            nulls=null_count,
-            bitmap=frozen_bitmap^,
-            buffers=self._finish_buffers(),
-            children=self._finish_children(),
-            offset=0,
-        )
-        self.length = 0
-        self.capacity = 0
-        self.null_count = 0
-        return result^
-
-    fn _finish_buffers(mut self) -> List[Buffer]:
-        # only to align with _finish_children which is required to avoid recursion warning
-        var frozen_buffers = List[Buffer]()
-        for i in range(len(self.buffers)):
-            frozen_buffers.append(self.buffers[i][].finish())
-        return frozen_buffers^
-
-    fn _finish_children(mut self) raises -> List[Array]:
-        # indirect call to avoid "self recursive call will cause an infinite loop" warning
-        var result = List[Array]()
-        for i in range(len(self.children)):
-            result.append(self.children[i][].finish())
-        return result^
 
 
 # ---------------------------------------------------------------------------
@@ -155,38 +92,31 @@ struct Builder(Copyable, Movable):
 
     fn __init__(out self, dtype: DataType, capacity: Int = 0) raises:
         """Create the right builder tree for any dtype."""
-        comptime for T in [
-            bool_,
-            int8,
-            int16,
-            int32,
-            int64,
-            uint8,
-            uint16,
-            uint32,
-            uint64,
-            float32,
-            float64,
-        ]:
-            if dtype == T:
-                self.data = PrimitiveBuilder[T](capacity).data
-                return
-        if dtype == string:
-            self.data = StringBuilder(capacity).data
-            return
-        if dtype.is_list():
-            var child = Builder(dtype.fields[0].dtype)
-            self.data = ListBuilder(child^, capacity).data
-            return
-        if dtype.is_struct():
-            var field_builders = List[Builder]()
-            for i in range(len(dtype.fields)):
-                field_builders.append(Builder(dtype.fields[i].dtype))
-            self.data = StructBuilder(dtype.fields.copy(), field_builders^, capacity).data
-            return
-        raise Error("unsupported type: " + String(dtype))
+        var builder: Builder
 
-    fn __copyinit__(out self, copy: Self):
+        if dtype.is_primitive():
+            comptime for T in primitive_dtypes:
+                if dtype == T:
+                    builder = PrimitiveBuilder[T](capacity)
+        elif dtype == string:
+            builder = StringBuilder(capacity)
+        elif dtype.is_list():
+            var child = Builder(dtype.fields[0].dtype)
+            builder = ListBuilder(child^, capacity)
+        elif dtype.is_fixed_size_list():
+            var child = Builder(dtype.fields[0].dtype)
+            builder = FixedSizeListBuilder(child^, dtype.size, capacity)
+        elif dtype.is_struct():
+            var children = List[Builder]()
+            for i in range(len(dtype.fields)):
+                children.append(Builder(dtype.fields[i].dtype))
+            builder = StructBuilder(dtype.fields.copy(), children^, capacity)
+        else:
+            raise Error("unsupported type: " + String(dtype))
+
+        self.data = builder.data
+
+    fn __init__(out self, *, copy: Self):
         self.data = copy.data
 
     @implicit
@@ -201,22 +131,18 @@ struct Builder(Copyable, Movable):
     fn __init__(out self, value: ListBuilder):
         self.data = value.data
 
+    @implicit
+    fn __init__(out self, value: FixedSizeListBuilder):
+        self.data = value.data
+
+    @implicit
+    fn __init__(out self, value: StructBuilder):
+        self.data = value.data
+
     fn finish(mut self) raises -> Array:
         dtype = self.data[].dtype
 
-        comptime for T in [
-            bool_,
-            int8,
-            int16,
-            int32,
-            int64,
-            uint8,
-            uint16,
-            uint32,
-            uint64,
-            float32,
-            float64,
-        ]:
+        comptime for T in primitive_dtypes:
             if dtype == T:
                 var b = PrimitiveBuilder[T](self.data)
                 return b.finish()
@@ -261,6 +187,7 @@ struct PrimitiveBuilder[T: DataType](Movable, Sized):
                 dtype=Self.T,
                 length=0,
                 capacity=capacity,
+                null_count=0,
                 bitmap=BitmapBuilder.alloc(capacity),
                 buffers=[
                     ArcPointer(BufferBuilder.alloc[Self.T.native](capacity))
@@ -375,6 +302,7 @@ struct StringBuilder(Movable, Sized):
                 dtype=string,
                 length=0,
                 capacity=capacity,
+                null_count=0,
                 bitmap=BitmapBuilder.alloc(capacity),
                 buffers=[
                     ArcPointer(offsets^),
@@ -494,6 +422,7 @@ struct ListBuilder(Movable, Sized):
                 dtype=list_(child_dtype^),
                 length=0,
                 capacity=capacity,
+                null_count=0,
                 bitmap=BitmapBuilder.alloc(capacity),
                 buffers=[ArcPointer(offsets^)],
                 children=[child.data],
@@ -591,6 +520,7 @@ struct FixedSizeListBuilder(Movable, Sized):
                 dtype=fixed_size_list_(child_dtype^, list_size),
                 length=0,
                 capacity=capacity,
+                null_count=0,
                 bitmap=BitmapBuilder.alloc(capacity),
                 buffers=List[ArcPointer[BufferBuilder]](),
                 children=[child.data],
@@ -686,6 +616,7 @@ struct StructBuilder(Movable, Sized):
                 dtype=struct_(fields),
                 length=0,
                 capacity=capacity,
+                null_count=0,
                 bitmap=BitmapBuilder.alloc(capacity),
                 buffers=List[ArcPointer[BufferBuilder]](),
                 children=children^,

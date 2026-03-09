@@ -34,19 +34,7 @@ trait DataTypeVisitor:
 
     fn visit(mut self, dtype: DataType) raises:
         """Dispatch to the typed overload matching the runtime dtype."""
-        comptime for dt in [
-            bool_,
-            int8,
-            int16,
-            int32,
-            int64,
-            uint8,
-            uint16,
-            uint32,
-            uint64,
-            float32,
-            float64,
-        ]:
+        comptime for dt in primitive_dtypes:
             if dtype == dt:
                 self.visit[dt]()
                 return
@@ -104,20 +92,7 @@ trait ArrayVisitor:
     fn visit(mut self, array: Array) raises:
         """Dispatch to the typed overload matching the runtime dtype."""
 
-        comptime for dtype in [
-            bool_,
-            int8,
-            int16,
-            int32,
-            int64,
-            uint8,
-            uint16,
-            uint32,
-            uint64,
-            float16,
-            float32,
-            float64,
-        ]:
+        comptime for dtype in primitive_dtypes:
             if array.dtype == dtype:
                 self.visit[dtype](PrimitiveArray[dtype](data=array))
                 return

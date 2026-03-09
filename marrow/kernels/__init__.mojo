@@ -52,7 +52,7 @@ from marrow.arrays import PrimitiveArray, Array
 from marrow.buffers import Buffer, BufferBuilder
 from marrow.bitmap import Bitmap, BitmapBuilder
 from marrow.builders import PrimitiveBuilder
-from marrow.dtypes import DataType, all_numeric_dtypes
+from marrow.dtypes import DataType, numeric_dtypes
 
 
 # ---------------------------------------------------------------------------
@@ -518,7 +518,7 @@ fn binary_array_dispatch[
             )
         )
 
-    comptime for dtype in all_numeric_dtypes:
+    comptime for dtype in numeric_dtypes:
         if left.dtype == dtype:
             return Array(
                 func[dtype](

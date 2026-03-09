@@ -52,7 +52,7 @@ from std.memory import memcpy
 from marrow.arrays import PrimitiveArray, StringArray, Array
 from marrow.buffers import Buffer, BufferBuilder
 from marrow.bitmap import Bitmap, BitmapBuilder
-from marrow.dtypes import DataType, bool_, uint32, string, all_numeric_dtypes
+from marrow.dtypes import DataType, bool_, uint32, string, numeric_dtypes
 
 from .boolean import count_true
 from .aggregate import sum as sum_kernel
@@ -451,7 +451,7 @@ fn filter(array: Array, selection: PrimitiveArray[bool_]) raises -> Array:
             filter[bool_](PrimitiveArray[bool_](data=array), selection)
         )
 
-    comptime for dtype in all_numeric_dtypes:
+    comptime for dtype in numeric_dtypes:
         if array.dtype == dtype:
             return Array(
                 filter[dtype](PrimitiveArray[dtype](data=array), selection)
@@ -495,7 +495,7 @@ fn drop_nulls(array: Array) raises -> Array:
     if array.dtype == bool_:
         return Array(drop_nulls[bool_](PrimitiveArray[bool_](data=array)))
 
-    comptime for dtype in all_numeric_dtypes:
+    comptime for dtype in numeric_dtypes:
         if array.dtype == dtype:
             return Array(drop_nulls[dtype](PrimitiveArray[dtype](data=array)))
 
