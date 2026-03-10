@@ -3,12 +3,12 @@ from std.testing import assert_equal, TestSuite
 from marrow.arrays import array, Array, PrimitiveArray, nulls
 from marrow.builders import PrimitiveBuilder
 from marrow.dtypes import int32, int64
-from marrow.kernels.aggregate import sum
+from marrow.kernels.aggregate import sum_
 
 
 def test_sum_typed() raises:
     var a = array[int64]([1, 2, 3, 4, 5])
-    var result = sum[int64](a)
+    var result = sum_[int64](a)
     assert_equal(result, 15)
 
 
@@ -18,25 +18,25 @@ def test_sum_with_nulls() raises:
     a.append(10)
     a.append(20)
     a.append_null()  # index 2 is null
-    var result = sum[int32](a.finish_typed())
+    var result = sum_[int32](a.finish_typed())
     assert_equal(result, 30)
 
 
 def test_sum_all_nulls() raises:
     var a = nulls[int64](5)
-    var result = sum[int64](a)
+    var result = sum_[int64](a)
     assert_equal(result, 0)
 
 
 def test_sum_empty() raises:
     var a = array[int32]()
-    var result = sum[int32](a)
+    var result = sum_[int32](a)
     assert_equal(result, 0)
 
 
 def test_sum_untyped() raises:
     var a = Array(array[int64]([1, 2, 3]))
-    var result = sum(a)
+    var result = sum_(a)
     assert_equal(result, 6.0)
 
 

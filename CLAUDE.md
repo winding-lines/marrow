@@ -223,7 +223,7 @@ pixi run bench_gpu          # GPU arithmetic benchmarks
 ## Coding Guidelines
 
 - Prefer explicit `if/else` over early-return `if + return` guard clauses. Keep the control flow flat and readable with `if/else` branches.
-- The Python binding API (under `python/`) should align with PyArrow's API surface (naming, signatures, behavior).
+- Prefer PyArrow's API naming everywhere — both in the Mojo core types and in the Python bindings. When in doubt, match PyArrow's method names and signatures.
 
 ## Mojo Version Notes
 

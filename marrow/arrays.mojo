@@ -26,7 +26,9 @@ from .dtypes import *
 
 
 @fieldwise_init
-struct Array(ConvertibleToPython, Copyable, Movable, Writable):
+struct Array(
+    ConvertibleFromPython, ConvertibleToPython, Copyable, Movable, Writable
+):
     """Array is the lower level abstraction directly usable by the library consumer.
 
     Equivalent with https://github.com/apache/arrow/blob/7184439dea96cd285e6de00e07c5114e4919a465/cpp/src/arrow/array/data.h#L62-L84.
@@ -111,6 +113,9 @@ struct Array(ConvertibleToPython, Copyable, Movable, Writable):
         self.buffers = take.buffers^
         self.children = take.children^
         self.offset = take.offset
+
+    fn __init__(out self, *, py: PythonObject) raises:
+        self = py.downcast_value_ptr[Self]()[].copy()
 
     fn is_valid(self, index: Int) -> Bool:
         if not self.bitmap:
@@ -249,15 +254,24 @@ struct PrimitiveArray[T: DataType](
         self.bitmap = data.bitmap
         self.buffer = data.buffers[0]
 
+    fn __init__(out self, *, py: PythonObject) raises:
+        self = py.downcast_value_ptr[Self]()[].copy()
+
     @always_inline
     fn __len__(self) -> Int:
         return self.length
 
-    fn with_offset(self, offset: Int) -> Self:
-        """Return a new PrimitiveArray with the given offset added to the current offset.
+    fn __str__(self) -> String:
+        return String.write(self)
+
+    fn slice(self, offset: Int = 0, length: Int = -1) -> Self:
+        """Zero-copy slice of this array.
+
+        Matches PyArrow's Array.slice(offset, length) API.
         """
+        var actual_length = length if length >= 0 else self.length - offset
         return Self(
-            length=self.length - offset,
+            length=actual_length,
             nulls=self.nulls,
             offset=self.offset + offset,
             bitmap=self.bitmap,
@@ -306,6 +320,25 @@ struct PrimitiveArray[T: DataType](
     fn null_count(self) -> Int:
         return self.nulls
 
+    fn true_count(self) raises -> Int:
+        """Count True values. Only valid for BoolArray (PrimitiveArray[bool_]).
+        """
+        comptime assert (
+            Self.T == bool_
+        ), "true_count is only valid for BoolArray"
+        var data_bm = Bitmap(self.buffer, self.offset, self.length)
+        if self.nulls > 0:
+            return (data_bm & self.bitmap.value()).count_set_bits()
+        return data_bm.count_set_bits()
+
+    fn false_count(self) raises -> Int:
+        """Count False values. Only valid for BoolArray (PrimitiveArray[bool_]).
+        """
+        comptime assert (
+            Self.T == bool_
+        ), "false_count is only valid for BoolArray"
+        return self.length - self.nulls - self.true_count()
+
     fn to_device(self, ctx: DeviceContext) raises -> PrimitiveArray[Self.T]:
         """Upload array data to the GPU."""
         var bm: Optional[Bitmap] = None
@@ -342,9 +375,6 @@ struct PrimitiveArray[T: DataType](
 
     fn to_python_object(var self) raises -> PythonObject:
         return PythonObject(alloc=self^)
-
-    fn __init__(out self, *, py: PythonObject) raises:
-        self = py.downcast_value_ptr[Self]()[].copy()
 
 
 comptime BoolArray = PrimitiveArray[bool_]
@@ -404,14 +434,20 @@ struct StringArray(
         """Return the number of elements in the array."""
         return self.length
 
+    fn __str__(self) -> String:
+        return String.write(self)
+
     fn null_count(self) -> Int:
         return self.nulls
 
-    fn with_offset(self, offset) -> Self:
-        """Return a new StringArray with the given offset added to the current offset.
+    fn slice(self, offset: Int = 0, length: Int = -1) -> Self:
+        """Zero-copy slice of this array.
+
+        Matches PyArrow's Array.slice(offset, length) API.
         """
+        var actual_length = length if length >= 0 else self.length - offset
         return Self(
-            length=self.length - offset,
+            length=actual_length,
             nulls=self.nulls,
             offset=self.offset + offset,
             bitmap=self.bitmap,
@@ -530,6 +566,9 @@ struct ListArray(
     fn __len__(self) -> Int:
         return self.length
 
+    fn __str__(self) -> String:
+        return String.write(self)
+
     fn null_count(self) -> Int:
         return self.nulls
 
@@ -568,6 +607,47 @@ struct ListArray(
         result.length = end - start
         result.nulls = 0
         return result^
+
+    fn __getitem__(self, index: Int) raises -> Array:
+        if index < 0 or index >= self.length:
+            raise Error(
+                "index {} out of bounds for length {}".format(
+                    index, self.length
+                )
+            )
+        return self.unsafe_get(index)
+
+    fn slice(self, offset: Int = 0, length: Int = -1) -> Self:
+        """Zero-copy slice of this array."""
+        var actual_length = length if length >= 0 else self.length - offset
+        return Self(
+            dtype=self.dtype,
+            length=actual_length,
+            nulls=self.nulls,
+            offset=self.offset + offset,
+            bitmap=self.bitmap,
+            offsets=self.offsets,
+            values=Array(copy=self.values),
+        )
+
+    fn flatten(self) -> Array:
+        """Unnest this ListArray, returning the flat child values."""
+        return Array(copy=self.values)
+
+    fn value_lengths(self) -> PrimitiveArray[int32]:
+        """Return an array of list lengths for each element."""
+        var buf = BufferBuilder.alloc[DType.int32](self.length)
+        for i in range(self.length):
+            var start = self.offsets.unsafe_get[DType.int32](self.offset + i)
+            var end = self.offsets.unsafe_get[DType.int32](self.offset + i + 1)
+            buf.unsafe_set[DType.int32](i, end - start)
+        return PrimitiveArray[int32](
+            length=self.length,
+            nulls=0,
+            offset=0,
+            bitmap=None,
+            buffer=buf.finish(),
+        )
 
 
 @fieldwise_init
@@ -617,6 +697,9 @@ struct FixedSizeListArray(
     fn __len__(self) -> Int:
         return self.length
 
+    fn __str__(self) -> String:
+        return String.write(self)
+
     fn null_count(self) -> Int:
         return self.nulls
 
@@ -655,6 +738,31 @@ struct FixedSizeListArray(
             children=self.values.children.copy(),
             offset=start,
         )
+
+    fn __getitem__(self, index: Int) raises -> Array:
+        if index < 0 or index >= self.length:
+            raise Error(
+                "index {} out of bounds for length {}".format(
+                    index, self.length
+                )
+            )
+        return self.unsafe_get(index)
+
+    fn slice(self, offset: Int = 0, length: Int = -1) -> Self:
+        """Zero-copy slice of this array."""
+        var actual_length = length if length >= 0 else self.length - offset
+        return Self(
+            dtype=self.dtype,
+            length=actual_length,
+            nulls=self.nulls,
+            offset=self.offset + offset,
+            bitmap=self.bitmap,
+            values=Array(copy=self.values),
+        )
+
+    fn flatten(self) -> Array:
+        """Unnest this FixedSizeListArray, returning the flat child values."""
+        return Array(copy=self.values)
 
     fn to_device(self, ctx: DeviceContext) raises -> FixedSizeListArray:
         """Upload child values to the GPU."""
@@ -722,6 +830,9 @@ struct StructArray(
     fn __len__(self) -> Int:
         return self.length
 
+    fn __str__(self) -> String:
+        return String.write(self)
+
     fn null_count(self) -> Int:
         return self.nulls
 
@@ -741,6 +852,11 @@ struct StructArray(
     fn write_repr_to[W: Writer](self, mut writer: W):
         self.write_to(writer)
 
+    fn is_valid(self, index: Int) -> Bool:
+        if not self.bitmap:
+            return True
+        return self.bitmap.value().is_valid(index)
+
     fn _index_for_field_name(self, name: StringSlice) raises -> Int:
         for idx, ref field in enumerate(self.dtype.fields):
             if field.name == name:
@@ -753,6 +869,33 @@ struct StructArray(
     ) raises -> ref[self.children[0]] Array:
         """Access the field with the given name in the struct."""
         return self.children[self._index_for_field_name(name)]
+
+    fn field(self, index: Int) raises -> Array:
+        """Access a child array by field index.
+
+        Matches PyArrow's StructArray.field(index) API.
+        """
+        if index < 0 or index >= len(self.children):
+            raise Error(
+                "field index {} out of bounds for {} fields".format(
+                    index, len(self.children)
+                )
+            )
+        return self.children[index].copy()
+
+    fn field(self, name: StringSlice) raises -> Array:
+        """Access a child array by field name.
+
+        Matches PyArrow's StructArray.field(name) API.
+        """
+        return self.children[self._index_for_field_name(name)].copy()
+
+    fn flatten(self) -> List[Array]:
+        """Return one Array per field.
+
+        Matches PyArrow's StructArray.flatten() API.
+        """
+        return self.children.copy()
 
 
 struct ChunkedArray(Movable, Writable):

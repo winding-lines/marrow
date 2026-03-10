@@ -134,7 +134,9 @@ struct CArrowSchema(Copyable):
         return CArrowSchema(
             format=UnsafePointer[c_char, MutAnyOrigin](),
             name=UnsafePointer[c_char, MutAnyOrigin](
-                unsafe_from_address=Int(field_name.as_c_string_slice().unsafe_ptr())
+                unsafe_from_address=Int(
+                    field_name.as_c_string_slice().unsafe_ptr()
+                )
             ),
             metadata=UnsafePointer[c_char, MutAnyOrigin](),
             flags=flags,

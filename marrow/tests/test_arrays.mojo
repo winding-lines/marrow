@@ -325,14 +325,14 @@ def test_primitive_array_with_offset() raises:
     assert_equal(arr.unsafe_get(0), 100)
     assert_equal(arr.unsafe_get(1), 200)
 
-    # Create a copy of array with offset, should point to the same buffers.
-    var arr_with_offset = arr.with_offset(2)
-    assert_equal(arr_with_offset.offset, 2)
+    # Create a zero-copy slice, should point to the same buffers.
+    var sliced = arr.slice(2)
+    assert_equal(sliced.offset, 2)
 
     # Test that offset affects get operations
-    assert_equal(arr_with_offset.unsafe_get(0), 300)  # Should get arr[2]
-    assert_equal(arr_with_offset.unsafe_get(1), 400)  # Should get arr[3]
-    assert_equal(arr_with_offset.unsafe_get(2), 500)  # Should get arr[4]
+    assert_equal(sliced.unsafe_get(0), 300)  # Should get arr[2]
+    assert_equal(sliced.unsafe_get(1), 400)  # Should get arr[3]
+    assert_equal(sliced.unsafe_get(2), 500)  # Should get arr[4]
 
 
 def test_primitive_array_nulls_with_offset() raises:
@@ -759,10 +759,568 @@ def test_string_getitem_bounds_check() raises:
         pass
 
 
-def test_pretty_printing() raises:
+# ---------------------------------------------------------------------------
+# String representation tests (__str__ / write_to)
+# ---------------------------------------------------------------------------
+
+
+def test_str_primitive_array() raises:
     var a = array[int32]([1, 2, 3])
     var s = String(a)
-    print(s)
+    assert_true("PrimitiveArray" in s)
+    assert_true("1" in s)
+    assert_true("2" in s)
+    assert_true("3" in s)
+
+
+def test_str_primitive_array_with_nulls() raises:
+    var a = array[int32]([1, None, 3])
+    var s = String(a)
+    assert_true("NULL" in s)
+    assert_true("1" in s)
+    assert_true("3" in s)
+
+
+def test_str_bool_array() raises:
+    var a = array([True, False, True])
+    var s = String(a)
+    assert_true("PrimitiveArray" in s)
+
+
+def test_str_string_array() raises:
+    var sb = StringBuilder()
+    sb.append("hello")
+    sb.append("world")
+    var a = sb.finish_typed()
+    var s = String(a)
+    assert_true("StringArray" in s)
+    assert_true("hello" in s)
+    assert_true("world" in s)
+
+
+def test_str_string_array_with_nulls() raises:
+    var sb = StringBuilder(3)
+    sb.append("foo")
+    sb.append_null()
+    sb.append("bar")
+    var a = sb.finish_typed()
+    var s = String(a)
+    assert_true("NULL" in s)
+    assert_true("foo" in s)
+    assert_true("bar" in s)
+
+
+def test_str_list_array() raises:
+    var ints_b = PrimitiveBuilder[int64]()
+    ints_b.append(1)
+    ints_b.append(2)
+    ints_b.append(3)
+    var list_b = ListBuilder(AnyBuilder(ints_b^))
+    list_b.append(True)
+    var lists = list_b.finish_typed()
+    var s = String(lists)
+    assert_true("ListArray" in s)
+
+
+def test_str_fixed_size_list_array() raises:
+    var ints_b = PrimitiveBuilder[int64](4)
+    ints_b.append(10)
+    ints_b.append(20)
+    ints_b.append(30)
+    ints_b.append(40)
+    var builder = FixedSizeListBuilder(AnyBuilder(ints_b^), list_size=2)
+    builder.append(True)
+    builder.append(True)
+    var fsl = builder.finish_typed()
+    var s = String(fsl)
+    assert_true("FixedSizeListArray" in s)
+
+
+def test_str_struct_array() raises:
+    var a_b = PrimitiveBuilder[int32](2)
+    a_b.append(1)
+    a_b.append(2)
+    var fields = List[Field]()
+    fields.append(Field("x", int32))
+    var children = List[AnyBuilder]()
+    children.append(AnyBuilder(a_b^))
+    var sb = StructBuilder(fields^, children^, capacity=2)
+    sb.append(True)
+    sb.append(True)
+    var sa = sb.finish_typed()
+    var s = String(sa)
+    assert_true("StructArray" in s)
+    assert_true("x" in s)
+
+
+# ---------------------------------------------------------------------------
+# is_valid tests for all array types
+# ---------------------------------------------------------------------------
+
+
+def test_string_array_is_valid() raises:
+    var sb = StringBuilder(4)
+    sb.append("a")
+    sb.append_null()
+    sb.append("c")
+    sb.append_null()
+    var a = sb.finish_typed()
+    assert_equal(a.null_count(), 2)
+    assert_true(a.is_valid(0))
+    assert_false(a.is_valid(1))
+    assert_true(a.is_valid(2))
+    assert_false(a.is_valid(3))
+
+
+def test_string_array_no_nulls() raises:
+    var sb = StringBuilder()
+    sb.append("hello")
+    sb.append("world")
+    var a = sb.finish_typed()
+    assert_equal(a.null_count(), 0)
+    assert_true(a.is_valid(0))
+    assert_true(a.is_valid(1))
+
+
+def test_list_array_is_valid() raises:
+    var ints_b = PrimitiveBuilder[int64]()
+    ints_b.append(1)
+    ints_b.append(2)
+    ints_b.append(3)
+    var list_b = ListBuilder(AnyBuilder(ints_b^))
+    list_b.append(True)
+    list_b.append_null()
+    list_b.append(True)
+    var lists = list_b.finish_typed()
+    assert_equal(len(lists), 3)
+    assert_equal(lists.null_count(), 1)
+    assert_true(lists.is_valid(0))
+    assert_false(lists.is_valid(1))
+    assert_true(lists.is_valid(2))
+
+
+def test_struct_array_is_valid() raises:
+    var a_b = PrimitiveBuilder[int32](3)
+    a_b.append(10)
+    a_b.append(20)
+    a_b.append(30)
+    var fields = List[Field]()
+    fields.append(Field("val", int32))
+    var children = List[AnyBuilder]()
+    children.append(AnyBuilder(a_b^))
+    var sb = StructBuilder(fields^, children^, capacity=3)
+    sb.append(True)
+    sb.append(False)
+    sb.append(True)
+    var sa = sb.finish_typed()
+    assert_equal(len(sa), 3)
+    assert_equal(sa.null_count(), 1)
+    assert_true(sa.is_valid(0))
+    assert_false(sa.is_valid(1))
+    assert_true(sa.is_valid(2))
+
+
+# ---------------------------------------------------------------------------
+# __getitem__ tests for all array types
+# ---------------------------------------------------------------------------
+
+
+def test_string_array_getitem() raises:
+    var sb = StringBuilder()
+    sb.append("alpha")
+    sb.append("beta")
+    sb.append("gamma")
+    var a = sb.finish_typed()
+    assert_equal(String(a[0]), "alpha")
+    assert_equal(String(a[1]), "beta")
+    assert_equal(String(a[2]), "gamma")
+
+
+def test_string_array_getitem_bounds() raises:
+    var sb = StringBuilder()
+    sb.append("only")
+    var a = sb.finish_typed()
+    try:
+        _ = a[1]
+        assert_true(False, "should have raised")
+    except:
+        pass
+    try:
+        _ = a[-1]
+        assert_true(False, "should have raised")
+    except:
+        pass
+
+
+def test_list_array_getitem() raises:
+    var ints_b = PrimitiveBuilder[int64]()
+    var list_b = ListBuilder(AnyBuilder(ints_b^))
+    var child = list_b.values().as_primitive[int64]()
+    child[].append(10)
+    child[].append(20)
+    list_b.append(True)  # [10, 20]
+    child[].append(30)
+    child[].append(40)
+    child[].append(50)
+    list_b.append(True)  # [30, 40, 50]
+    var lists = list_b.finish_typed()
+    var first = lists[0]
+    assert_equal(first.length, 2)
+    var second = lists[1]
+    assert_equal(second.length, 3)
+
+
+def test_list_array_getitem_bounds() raises:
+    var ints_b = PrimitiveBuilder[int64]()
+    ints_b.append(1)
+    var list_b = ListBuilder(AnyBuilder(ints_b^))
+    list_b.append(True)
+    var lists = list_b.finish_typed()
+    try:
+        _ = lists[1]
+        assert_true(False, "should have raised")
+    except:
+        pass
+    try:
+        _ = lists[-1]
+        assert_true(False, "should have raised")
+    except:
+        pass
+
+
+def test_fixed_size_list_getitem() raises:
+    var ints_b = PrimitiveBuilder[int32](6)
+    ints_b.append(1)
+    ints_b.append(2)
+    ints_b.append(3)
+    ints_b.append(4)
+    ints_b.append(5)
+    ints_b.append(6)
+    var builder = FixedSizeListBuilder(AnyBuilder(ints_b^), list_size=3)
+    builder.append(True)
+    builder.append(True)
+    var fsl = builder.finish_typed()
+    var first = fsl[0].as_int32()
+    assert_equal(first[0], 1)
+    assert_equal(first[1], 2)
+    assert_equal(first[2], 3)
+    var second = fsl[1].as_int32()
+    assert_equal(second[0], 4)
+    assert_equal(second[1], 5)
+    assert_equal(second[2], 6)
+
+
+def test_fixed_size_list_getitem_bounds() raises:
+    var ints_b = PrimitiveBuilder[int32](3)
+    ints_b.append(1)
+    ints_b.append(2)
+    ints_b.append(3)
+    var builder = FixedSizeListBuilder(AnyBuilder(ints_b^), list_size=3)
+    builder.append(True)
+    var fsl = builder.finish_typed()
+    try:
+        _ = fsl[1]
+        assert_true(False, "should have raised")
+    except:
+        pass
+    try:
+        _ = fsl[-1]
+        assert_true(False, "should have raised")
+    except:
+        pass
+
+
+def test_struct_array_field_by_index() raises:
+    var a_b = PrimitiveBuilder[int32](2)
+    a_b.append(1)
+    a_b.append(2)
+    var b_b = StringBuilder()
+    b_b.append("x")
+    b_b.append("y")
+    var fields = List[Field]()
+    fields.append(Field("id", int32))
+    fields.append(Field("name", string))
+    var children = List[AnyBuilder]()
+    children.append(AnyBuilder(a_b^))
+    children.append(AnyBuilder(b_b^))
+    var sb = StructBuilder(fields^, children^, capacity=2)
+    sb.append(True)
+    sb.append(True)
+    var sa = sb.finish_typed()
+
+    var id_arr = sa.field(0).as_int32()
+    assert_equal(id_arr[0], 1)
+    assert_equal(id_arr[1], 2)
+
+    var name_arr = sa.field(1).as_string()
+    assert_equal(String(name_arr[0]), "x")
+    assert_equal(String(name_arr[1]), "y")
+
+
+def test_struct_array_field_by_name() raises:
+    var a_b = PrimitiveBuilder[int32](2)
+    a_b.append(10)
+    a_b.append(20)
+    var fields = List[Field]()
+    fields.append(Field("val", int32))
+    var children = List[AnyBuilder]()
+    children.append(AnyBuilder(a_b^))
+    var sb = StructBuilder(fields^, children^, capacity=2)
+    sb.append(True)
+    sb.append(True)
+    var sa = sb.finish_typed()
+
+    var val_arr = sa.field("val").as_int32()
+    assert_equal(val_arr[0], 10)
+    assert_equal(val_arr[1], 20)
+
+
+def test_struct_array_field_bounds() raises:
+    var a_b = PrimitiveBuilder[int32](1)
+    a_b.append(1)
+    var fields = List[Field]()
+    fields.append(Field("x", int32))
+    var children = List[AnyBuilder]()
+    children.append(AnyBuilder(a_b^))
+    var sb = StructBuilder(fields^, children^, capacity=1)
+    sb.append(True)
+    var sa = sb.finish_typed()
+    try:
+        _ = sa.field(1)
+        assert_true(False, "should have raised")
+    except:
+        pass
+    try:
+        _ = sa.field("nonexistent")
+        assert_true(False, "should have raised")
+    except:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Property / offset tests for underrepresented types
+# ---------------------------------------------------------------------------
+
+
+def test_string_array_slice() raises:
+    var sb = StringBuilder()
+    sb.append("aa")
+    sb.append("bb")
+    sb.append("cc")
+    sb.append("dd")
+    var a = sb.finish_typed()
+    var sliced = a.slice(2)
+    assert_equal(len(sliced), 2)
+    assert_equal(sliced.offset, 2)
+    assert_equal(String(sliced[0]), "cc")
+    assert_equal(String(sliced[1]), "dd")
+
+
+def test_fixed_size_list_len_and_null_count() raises:
+    var ints_b = PrimitiveBuilder[int64](6)
+    ints_b.append(1)
+    ints_b.append(2)
+    ints_b.append(3)
+    ints_b.append(4)
+    ints_b.append(5)
+    ints_b.append(6)
+    var builder = FixedSizeListBuilder(AnyBuilder(ints_b^), list_size=2)
+    builder.append(True)
+    builder.append(False)
+    builder.append(True)
+    var fsl = builder.finish_typed()
+    assert_equal(len(fsl), 3)
+    assert_equal(fsl.null_count(), 1)
+
+
+def test_list_array_null_count() raises:
+    var ints_b = PrimitiveBuilder[int64]()
+    ints_b.append(1)
+    ints_b.append(2)
+    var list_b = ListBuilder(AnyBuilder(ints_b^))
+    list_b.append(True)
+    list_b.append_null()
+    var lists = list_b.finish_typed()
+    assert_equal(lists.null_count(), 1)
+    assert_equal(len(lists), 2)
+
+
+def test_primitive_array_no_nulls_is_valid() raises:
+    var a = array[int64]([10, 20, 30])
+    assert_equal(a.null_count(), 0)
+    for i in range(3):
+        assert_true(a.is_valid(i))
+
+
+# ---------------------------------------------------------------------------
+# slice() tests
+# ---------------------------------------------------------------------------
+
+
+def test_primitive_array_slice_with_length() raises:
+    var a = array[int32]([10, 20, 30, 40, 50])
+    var s = a.slice(1, 3)
+    assert_equal(len(s), 3)
+    assert_equal(s[0], 20)
+    assert_equal(s[1], 30)
+    assert_equal(s[2], 40)
+
+
+def test_string_array_slice_with_length() raises:
+    var sb = StringBuilder()
+    sb.append("aa")
+    sb.append("bb")
+    sb.append("cc")
+    sb.append("dd")
+    var a = sb.finish_typed()
+    var s = a.slice(1, 2)
+    assert_equal(len(s), 2)
+    assert_equal(String(s[0]), "bb")
+    assert_equal(String(s[1]), "cc")
+
+
+def test_list_array_slice() raises:
+    var ints_b = PrimitiveBuilder[int64]()
+    var list_b = ListBuilder(AnyBuilder(ints_b^))
+    var child = list_b.values().as_primitive[int64]()
+    child[].append(1)
+    child[].append(2)
+    list_b.append(True)
+    child[].append(3)
+    list_b.append(True)
+    child[].append(4)
+    child[].append(5)
+    list_b.append(True)
+    var lists = list_b.finish_typed()
+    var s = lists.slice(1)
+    assert_equal(len(s), 2)
+
+
+def test_fixed_size_list_slice() raises:
+    var ints_b = PrimitiveBuilder[int32](6)
+    ints_b.append(1)
+    ints_b.append(2)
+    ints_b.append(3)
+    ints_b.append(4)
+    ints_b.append(5)
+    ints_b.append(6)
+    var builder = FixedSizeListBuilder(AnyBuilder(ints_b^), list_size=2)
+    builder.append(True)
+    builder.append(True)
+    builder.append(True)
+    var fsl = builder.finish_typed()
+    var s = fsl.slice(1, 2)
+    assert_equal(len(s), 2)
+    var first = s[0].as_int32()
+    assert_equal(first[0], 3)
+    assert_equal(first[1], 4)
+
+
+# ---------------------------------------------------------------------------
+# BoolArray true_count / false_count
+# ---------------------------------------------------------------------------
+
+
+def test_bool_true_count() raises:
+    var a = array([True, True, False, True, False])
+    assert_equal(a.true_count(), 3)
+    assert_equal(a.false_count(), 2)
+
+
+def test_bool_true_count_with_nulls() raises:
+    var a = array([True, None, False, True])
+    assert_equal(a.true_count(), 2)
+    assert_equal(a.false_count(), 1)
+    assert_equal(a.null_count(), 1)
+
+
+def test_bool_all_false() raises:
+    var a = array([False, False, False])
+    assert_equal(a.true_count(), 0)
+    assert_equal(a.false_count(), 3)
+
+
+def test_bool_all_true() raises:
+    var a = array([True, True, True])
+    assert_equal(a.true_count(), 3)
+    assert_equal(a.false_count(), 0)
+
+
+# ---------------------------------------------------------------------------
+# flatten() and value_lengths() tests
+# ---------------------------------------------------------------------------
+
+
+def test_list_array_flatten() raises:
+    var ints_b = PrimitiveBuilder[int64]()
+    var list_b = ListBuilder(AnyBuilder(ints_b^))
+    var child = list_b.values().as_primitive[int64]()
+    child[].append(1)
+    child[].append(2)
+    list_b.append(True)
+    child[].append(3)
+    list_b.append(True)
+    var lists = list_b.finish_typed()
+    var flat = lists.flatten()
+    assert_equal(flat.length, 3)
+
+
+def test_list_array_value_lengths() raises:
+    var ints_b = PrimitiveBuilder[int64]()
+    var list_b = ListBuilder(AnyBuilder(ints_b^))
+    var child = list_b.values().as_primitive[int64]()
+    child[].append(1)
+    child[].append(2)
+    list_b.append(True)  # length 2
+    child[].append(3)
+    list_b.append(True)  # length 1
+    child[].append(4)
+    child[].append(5)
+    child[].append(6)
+    list_b.append(True)  # length 3
+    var lists = list_b.finish_typed()
+    var lengths = lists.value_lengths()
+    assert_equal(len(lengths), 3)
+    assert_equal(lengths[0], 2)
+    assert_equal(lengths[1], 1)
+    assert_equal(lengths[2], 3)
+
+
+def test_fixed_size_list_flatten() raises:
+    var ints_b = PrimitiveBuilder[int32](4)
+    ints_b.append(10)
+    ints_b.append(20)
+    ints_b.append(30)
+    ints_b.append(40)
+    var builder = FixedSizeListBuilder(AnyBuilder(ints_b^), list_size=2)
+    builder.append(True)
+    builder.append(True)
+    var fsl = builder.finish_typed()
+    var flat = fsl.flatten()
+    assert_equal(flat.length, 4)
+
+
+def test_struct_array_flatten() raises:
+    var a_b = PrimitiveBuilder[int32](2)
+    a_b.append(1)
+    a_b.append(2)
+    var b_b = StringBuilder()
+    b_b.append("x")
+    b_b.append("y")
+    var fields = List[Field]()
+    fields.append(Field("id", int32))
+    fields.append(Field("name", string))
+    var children = List[AnyBuilder]()
+    children.append(AnyBuilder(a_b^))
+    children.append(AnyBuilder(b_b^))
+    var sb = StructBuilder(fields^, children^, capacity=2)
+    sb.append(True)
+    sb.append(True)
+    var sa = sb.finish_typed()
+    var flat = sa.flatten()
+    assert_equal(len(flat), 2)
+    assert_equal(flat[0].length, 2)
+    assert_equal(flat[1].length, 2)
 
 
 def main() raises:

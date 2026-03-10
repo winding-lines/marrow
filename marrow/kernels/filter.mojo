@@ -55,7 +55,7 @@ from marrow.bitmap import Bitmap, BitmapBuilder
 from marrow.dtypes import DataType, bool_, uint32, string, numeric_dtypes
 
 from .boolean import count_true
-from .aggregate import sum as sum_kernel
+from .aggregate import sum_
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +126,7 @@ fn _string_lengths(array: StringArray) -> PrimitiveArray[uint32]:
 # ---------------------------------------------------------------------------
 
 
+# TODO: this is messy, refactor it!
 fn filter[
     T: DataType
 ](
@@ -314,7 +315,7 @@ fn filter(
     var sel_lengths = filter[uint32](lengths, selection)
 
     # Step 3: total output byte size
-    var total_bytes = Int(sum_kernel[uint32](sel_lengths))
+    var total_bytes = Int(sum_[uint32](sel_lengths))
 
     # Step 4: output validity — filter the array's validity bitmap.
     # _bitmap_as_bool_array wraps the source validity as a bool array's DATA buffer.

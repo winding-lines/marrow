@@ -20,7 +20,7 @@ from marrow.arrays import PrimitiveArray, Array
 from marrow.dtypes import (
     DataType,
     numeric_dtypes,
-    bool as bool_dt,
+    bool_ as bool_dt,
 )
 from . import reduce_simd
 
@@ -88,18 +88,18 @@ fn _horizontal_and[T: DType, W: Int](v: SIMD[T, W]) -> Scalar[T]:
 # ---------------------------------------------------------------------------
 
 
-fn sum[T: DataType](array: PrimitiveArray[T]) -> Scalar[T.native]:
+fn sum_[T: DataType](array: PrimitiveArray[T]) -> Scalar[T.native]:
     """Sum all valid (non-null) elements. Returns 0 if empty or all null."""
     return reduce_simd[
         T, combine=_add[T.native, _], horizontal=_horizontal_add[T.native, _]
     ](array, Scalar[T.native](0))
 
 
-fn sum(array: Array) raises -> Scalar[DType.float64]:
+fn sum_(array: Array) raises -> Scalar[DType.float64]:
     """Runtime-typed sum, returns float64."""
     comptime for dtype in numeric_dtypes:
         if array.dtype == dtype:
-            return sum[dtype](PrimitiveArray[dtype](data=array)).cast[
+            return sum_[dtype](PrimitiveArray[dtype](data=array)).cast[
                 DType.float64
             ]()
     raise Error("sum: unsupported dtype " + String(array.dtype))
@@ -188,9 +188,9 @@ fn any_(array: PrimitiveArray[bool_dt]) -> Bool:
     return Bool(
         reduce_simd[
             bool_dt,
-            combine=_or[DType.bool, _],
-            horizontal=_horizontal_or[DType.bool, _],
-        ](array, Scalar[DType.bool](False))
+            combine=_or[bool_dt.native, _],
+            horizontal=_horizontal_or[bool_dt.native, _],
+        ](array, Scalar[bool_dt.native](False))
     )
 
 
@@ -199,7 +199,7 @@ fn all_(array: PrimitiveArray[bool_dt]) -> Bool:
     return Bool(
         reduce_simd[
             bool_dt,
-            combine=_and[DType.bool, _],
-            horizontal=_horizontal_and[DType.bool, _],
-        ](array, Scalar[DType.bool](True))
+            combine=_and[bool_dt.native, _],
+            horizontal=_horizontal_and[bool_dt.native, _],
+        ](array, Scalar[bool_dt.native](True))
     )

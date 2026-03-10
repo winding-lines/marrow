@@ -1,24 +1,100 @@
-from std.python import PythonObject, ConvertibleToPython, Python
+from std.python import PythonObject, ConvertibleToPython, ConvertibleFromPython, Python
 from std.python.bindings import PythonModuleBuilder
 from std.collections import OwnedKwargsDict
 from std.python._cpython import CPython, PyObjectPtr, PyTypeObject, PyTypeObjectPtr
 from std.memory import ArcPointer, alloc
-from marrow.arrays import Array
+from marrow.arrays import (
+    Array,
+    PrimitiveArray,
+    BoolArray,
+    Int8Array,
+    Int16Array,
+    Int32Array,
+    Int64Array,
+    UInt8Array,
+    UInt16Array,
+    UInt32Array,
+    UInt64Array,
+    Float32Array,
+    Float64Array,
+    StringArray,
+    ListArray,
+    FixedSizeListArray,
+    StructArray,
+    ChunkedArray,
+)
 from marrow.builders import AnyBuilder, ListBuilder, StructBuilder, make_builder
-import marrow.arrays as arr
 import marrow.dtypes as dt
+
+
+# ---------------------------------------------------------------------------
+# pymethod helpers — reduce boilerplate for Python bindings
+# ---------------------------------------------------------------------------
 
 
 fn pymethod[
     T: AnyType,
     R: ConvertibleToPython,
     //,
-    method: fn (T) -> R,
+    method: fn (T) raises -> R,
 ]() -> fn (UnsafePointer[T, MutAnyOrigin]) raises -> PythonObject:
+    """Wrap a zero-arg method returning ConvertibleToPython."""
+
     fn wrapper(ptr: UnsafePointer[T, MutAnyOrigin]) raises -> PythonObject:
         return method(ptr[]).to_python_object()
 
     return wrapper
+
+
+fn pymethod[
+    T: AnyType,
+    A0: ConvertibleFromPython,
+    R: ConvertibleToPython,
+    //,
+    method: fn (T, A0) raises -> R,
+]() -> fn (UnsafePointer[T, MutAnyOrigin], PythonObject) raises -> PythonObject:
+    """Wrap a single-arg method returning ConvertibleToPython."""
+
+    fn wrapper(
+        ptr: UnsafePointer[T, MutAnyOrigin], arg: PythonObject
+    ) raises -> PythonObject:
+        return method(ptr[], A0(py=arg)).to_python_object()
+
+    return wrapper
+
+
+fn pymethod[
+    T: AnyType,
+    A0: ConvertibleFromPython,
+    A1: ConvertibleFromPython,
+    R: ConvertibleToPython,
+    //,
+    method: fn (T, A0, A1) raises -> R,
+]() -> fn (
+    UnsafePointer[T, MutAnyOrigin], PythonObject, PythonObject
+) raises -> PythonObject:
+    """Wrap a two-arg method returning ConvertibleToPython."""
+
+    fn wrapper(
+        ptr: UnsafePointer[T, MutAnyOrigin],
+        arg0: PythonObject,
+        arg1: PythonObject,
+    ) raises -> PythonObject:
+        return method(ptr[], A0(py=arg0), A1(py=arg1)).to_python_object()
+
+    return wrapper
+
+
+# ---------------------------------------------------------------------------
+# Custom wrappers for methods that need special return-type handling
+# ---------------------------------------------------------------------------
+
+
+fn _str_getitem(
+    ptr: UnsafePointer[StringArray, MutAnyOrigin],
+    index: PythonObject,
+) raises -> PythonObject:
+    return PythonObject(String(ptr[].__getitem__(Int(py=index))))
 
 
 # ---------------------------------------------------------------------------
@@ -588,76 +664,170 @@ fn array(
 def add_to_module(mut mb: PythonModuleBuilder) raises -> None:
     """Add array types and constructors to the Python API."""
 
+    # --- BoolArray ---
     _ = (
-        mb.add_type[arr.BoolArray]("BoolArray")
-        .def_method[pymethod[arr.BoolArray.__len__]()]("__len__")
-        .def_method[pymethod[arr.BoolArray.null_count]()]("null_count")
+        mb.add_type[BoolArray]("BoolArray")
+        .def_method[pymethod[BoolArray.__len__]()]("__len__")
+        .def_method[pymethod[BoolArray.null_count]()]("null_count")
+        .def_method[pymethod[BoolArray.__str__]()]("__str__")
+        .def_method[pymethod[BoolArray.__str__]()]("__repr__")
+        .def_method[pymethod[BoolArray.is_valid]()]("is_valid")
+        .def_method[pymethod[BoolArray.__getitem__]()]("__getitem__")
+        .def_method[pymethod[BoolArray.slice]()]("slice")
+        .def_method[pymethod[BoolArray.true_count]()]("true_count")
+        .def_method[pymethod[BoolArray.false_count]()]("false_count")
+    )
+
+    # --- Numeric PrimitiveArrays ---
+    _ = (
+        mb.add_type[Int8Array]("Int8Array")
+        .def_method[pymethod[Int8Array.__len__]()]("__len__")
+        .def_method[pymethod[Int8Array.null_count]()]("null_count")
+        .def_method[pymethod[Int8Array.__str__]()]("__str__")
+        .def_method[pymethod[Int8Array.__str__]()]("__repr__")
+        .def_method[pymethod[Int8Array.is_valid]()]("is_valid")
+        .def_method[pymethod[Int8Array.__getitem__]()]("__getitem__")
+        .def_method[pymethod[Int8Array.slice]()]("slice")
     )
     _ = (
-        mb.add_type[arr.Int8Array]("Int8Array")
-        .def_method[pymethod[arr.Int8Array.__len__]()]("__len__")
-        .def_method[pymethod[arr.Int8Array.null_count]()]("null_count")
+        mb.add_type[Int16Array]("Int16Array")
+        .def_method[pymethod[Int16Array.__len__]()]("__len__")
+        .def_method[pymethod[Int16Array.null_count]()]("null_count")
+        .def_method[pymethod[Int16Array.__str__]()]("__str__")
+        .def_method[pymethod[Int16Array.__str__]()]("__repr__")
+        .def_method[pymethod[Int16Array.is_valid]()]("is_valid")
+        .def_method[pymethod[Int16Array.__getitem__]()]("__getitem__")
+        .def_method[pymethod[Int16Array.slice]()]("slice")
     )
     _ = (
-        mb.add_type[arr.Int16Array]("Int16Array")
-        .def_method[pymethod[arr.Int16Array.__len__]()]("__len__")
-        .def_method[pymethod[arr.Int16Array.null_count]()]("null_count")
+        mb.add_type[Int32Array]("Int32Array")
+        .def_method[pymethod[Int32Array.__len__]()]("__len__")
+        .def_method[pymethod[Int32Array.null_count]()]("null_count")
+        .def_method[pymethod[Int32Array.__str__]()]("__str__")
+        .def_method[pymethod[Int32Array.__str__]()]("__repr__")
+        .def_method[pymethod[Int32Array.is_valid]()]("is_valid")
+        .def_method[pymethod[Int32Array.__getitem__]()]("__getitem__")
+        .def_method[pymethod[Int32Array.slice]()]("slice")
     )
     _ = (
-        mb.add_type[arr.Int32Array]("Int32Array")
-        .def_method[pymethod[arr.Int32Array.__len__]()]("__len__")
-        .def_method[pymethod[arr.Int32Array.null_count]()]("null_count")
+        mb.add_type[Int64Array]("Int64Array")
+        .def_method[pymethod[Int64Array.__len__]()]("__len__")
+        .def_method[pymethod[Int64Array.null_count]()]("null_count")
+        .def_method[pymethod[Int64Array.__str__]()]("__str__")
+        .def_method[pymethod[Int64Array.__str__]()]("__repr__")
+        .def_method[pymethod[Int64Array.is_valid]()]("is_valid")
+        .def_method[pymethod[Int64Array.__getitem__]()]("__getitem__")
+        .def_method[pymethod[Int64Array.slice]()]("slice")
     )
     _ = (
-        mb.add_type[arr.Int64Array]("Int64Array")
-        .def_method[pymethod[arr.Int64Array.__len__]()]("__len__")
-        .def_method[pymethod[arr.Int64Array.null_count]()]("null_count")
+        mb.add_type[UInt8Array]("UInt8Array")
+        .def_method[pymethod[UInt8Array.__len__]()]("__len__")
+        .def_method[pymethod[UInt8Array.null_count]()]("null_count")
+        .def_method[pymethod[UInt8Array.__str__]()]("__str__")
+        .def_method[pymethod[UInt8Array.__str__]()]("__repr__")
+        .def_method[pymethod[UInt8Array.is_valid]()]("is_valid")
+        .def_method[pymethod[UInt8Array.__getitem__]()]("__getitem__")
+        .def_method[pymethod[UInt8Array.slice]()]("slice")
     )
     _ = (
-        mb.add_type[arr.UInt8Array]("UInt8Array")
-        .def_method[pymethod[arr.UInt8Array.__len__]()]("__len__")
-        .def_method[pymethod[arr.UInt8Array.null_count]()]("null_count")
+        mb.add_type[UInt16Array]("UInt16Array")
+        .def_method[pymethod[UInt16Array.__len__]()]("__len__")
+        .def_method[pymethod[UInt16Array.null_count]()]("null_count")
+        .def_method[pymethod[UInt16Array.__str__]()]("__str__")
+        .def_method[pymethod[UInt16Array.__str__]()]("__repr__")
+        .def_method[pymethod[UInt16Array.is_valid]()]("is_valid")
+        .def_method[pymethod[UInt16Array.__getitem__]()]("__getitem__")
+        .def_method[pymethod[UInt16Array.slice]()]("slice")
     )
     _ = (
-        mb.add_type[arr.UInt16Array]("UInt16Array")
-        .def_method[pymethod[arr.UInt16Array.__len__]()]("__len__")
-        .def_method[pymethod[arr.UInt16Array.null_count]()]("null_count")
+        mb.add_type[UInt32Array]("UInt32Array")
+        .def_method[pymethod[UInt32Array.__len__]()]("__len__")
+        .def_method[pymethod[UInt32Array.null_count]()]("null_count")
+        .def_method[pymethod[UInt32Array.__str__]()]("__str__")
+        .def_method[pymethod[UInt32Array.__str__]()]("__repr__")
+        .def_method[pymethod[UInt32Array.is_valid]()]("is_valid")
+        .def_method[pymethod[UInt32Array.__getitem__]()]("__getitem__")
+        .def_method[pymethod[UInt32Array.slice]()]("slice")
     )
     _ = (
-        mb.add_type[arr.UInt32Array]("UInt32Array")
-        .def_method[pymethod[arr.UInt32Array.__len__]()]("__len__")
-        .def_method[pymethod[arr.UInt32Array.null_count]()]("null_count")
+        mb.add_type[UInt64Array]("UInt64Array")
+        .def_method[pymethod[UInt64Array.__len__]()]("__len__")
+        .def_method[pymethod[UInt64Array.null_count]()]("null_count")
+        .def_method[pymethod[UInt64Array.__str__]()]("__str__")
+        .def_method[pymethod[UInt64Array.__str__]()]("__repr__")
+        .def_method[pymethod[UInt64Array.is_valid]()]("is_valid")
+        .def_method[pymethod[UInt64Array.__getitem__]()]("__getitem__")
+        .def_method[pymethod[UInt64Array.slice]()]("slice")
     )
     _ = (
-        mb.add_type[arr.UInt64Array]("UInt64Array")
-        .def_method[pymethod[arr.UInt64Array.__len__]()]("__len__")
-        .def_method[pymethod[arr.UInt64Array.null_count]()]("null_count")
+        mb.add_type[Float32Array]("Float32Array")
+        .def_method[pymethod[Float32Array.__len__]()]("__len__")
+        .def_method[pymethod[Float32Array.null_count]()]("null_count")
+        .def_method[pymethod[Float32Array.__str__]()]("__str__")
+        .def_method[pymethod[Float32Array.__str__]()]("__repr__")
+        .def_method[pymethod[Float32Array.is_valid]()]("is_valid")
+        .def_method[pymethod[Float32Array.__getitem__]()]("__getitem__")
+        .def_method[pymethod[Float32Array.slice]()]("slice")
     )
     _ = (
-        mb.add_type[arr.Float32Array]("Float32Array")
-        .def_method[pymethod[arr.Float32Array.__len__]()]("__len__")
-        .def_method[pymethod[arr.Float32Array.null_count]()]("null_count")
+        mb.add_type[Float64Array]("Float64Array")
+        .def_method[pymethod[Float64Array.__len__]()]("__len__")
+        .def_method[pymethod[Float64Array.null_count]()]("null_count")
+        .def_method[pymethod[Float64Array.__str__]()]("__str__")
+        .def_method[pymethod[Float64Array.__str__]()]("__repr__")
+        .def_method[pymethod[Float64Array.is_valid]()]("is_valid")
+        .def_method[pymethod[Float64Array.__getitem__]()]("__getitem__")
+        .def_method[pymethod[Float64Array.slice]()]("slice")
     )
+
+    # --- StringArray ---
     _ = (
-        mb.add_type[arr.Float64Array]("Float64Array")
-        .def_method[pymethod[arr.Float64Array.__len__]()]("__len__")
-        .def_method[pymethod[arr.Float64Array.null_count]()]("null_count")
+        mb.add_type[StringArray]("StringArray")
+        .def_method[pymethod[StringArray.__len__]()]("__len__")
+        .def_method[pymethod[StringArray.null_count]()]("null_count")
+        .def_method[pymethod[StringArray.__str__]()]("__str__")
+        .def_method[pymethod[StringArray.__str__]()]("__repr__")
+        .def_method[pymethod[StringArray.is_valid]()]("is_valid")
+        .def_method[_str_getitem]("__getitem__")
+        .def_method[pymethod[StringArray.slice]()]("slice")
     )
+
+    # --- ListArray ---
     _ = (
-        mb.add_type[arr.StringArray]("StringArray")
-        .def_method[pymethod[arr.StringArray.__len__]()]("__len__")
-        .def_method[pymethod[arr.StringArray.null_count]()]("null_count")
+        mb.add_type[ListArray]("ListArray")
+        .def_method[pymethod[ListArray.__len__]()]("__len__")
+        .def_method[pymethod[ListArray.null_count]()]("null_count")
+        .def_method[pymethod[ListArray.__str__]()]("__str__")
+        .def_method[pymethod[ListArray.__str__]()]("__repr__")
+        .def_method[pymethod[ListArray.is_valid]()]("is_valid")
+        .def_method[pymethod[ListArray.__getitem__]()]("__getitem__")
+        .def_method[pymethod[ListArray.slice]()]("slice")
+        .def_method[pymethod[ListArray.flatten]()]("flatten")
+        .def_method[pymethod[ListArray.value_lengths]()]("value_lengths")
     )
+
+    # --- FixedSizeListArray ---
     _ = (
-        mb.add_type[arr.ListArray]("ListArray")
-        .def_method[pymethod[arr.ListArray.__len__]()]("__len__")
-        .def_method[pymethod[arr.ListArray.null_count]()]("null_count")
+        mb.add_type[FixedSizeListArray]("FixedSizeListArray")
+        .def_method[pymethod[FixedSizeListArray.__len__]()]("__len__")
+        .def_method[pymethod[FixedSizeListArray.null_count]()]("null_count")
+        .def_method[pymethod[FixedSizeListArray.__str__]()]("__str__")
+        .def_method[pymethod[FixedSizeListArray.__str__]()]("__repr__")
+        .def_method[pymethod[FixedSizeListArray.is_valid]()]("is_valid")
+        .def_method[pymethod[FixedSizeListArray.__getitem__]()]("__getitem__")
+        .def_method[pymethod[FixedSizeListArray.slice]()]("slice")
+        .def_method[pymethod[FixedSizeListArray.flatten]()]("flatten")
     )
-    _ = mb.add_type[arr.FixedSizeListArray]("FixedSizeListArray")
+
+    # --- StructArray ---
     _ = (
-        mb.add_type[arr.StructArray]("StructArray")
-        .def_method[pymethod[arr.StructArray.__len__]()]("__len__")
-        .def_method[pymethod[arr.StructArray.null_count]()]("null_count")
+        mb.add_type[StructArray]("StructArray")
+        .def_method[pymethod[StructArray.__len__]()]("__len__")
+        .def_method[pymethod[StructArray.null_count]()]("null_count")
+        .def_method[pymethod[StructArray.__str__]()]("__str__")
+        .def_method[pymethod[StructArray.__str__]()]("__repr__")
+        .def_method[pymethod[StructArray.is_valid]()]("is_valid")
+        .def_method[pymethod[StructArray.field]()]("field")
     )
 
     mb.def_function[infer_type](
