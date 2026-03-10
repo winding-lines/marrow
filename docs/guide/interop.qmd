@@ -1,0 +1,111 @@
+---
+title: "PyArrow Interop"
+---
+
+Marrow and [PyArrow](https://arrow.apache.org/docs/python/) implement the same Apache Arrow columnar format. This page covers how they relate, where Marrow is faster, and how to exchange data between them at the Mojo level via the [Arrow C Data Interface](https://arrow.apache.org/docs/format/CDataInterface.html).
+
+```{python}
+#| echo: false
+import sys
+sys.path.insert(0, "../../python")
+import marrow as ma
+import pyarrow as pa
+```
+
+## Same data model
+
+Both libraries represent the same Arrow memory layout. An `int64` array in Marrow and in PyArrow are bitwise identical in memory.
+
+```{python}
+# Marrow
+ma_arr = ma.array([1, 2, 3, None, 5])
+print("marrow:", ma_arr)
+print("type:  ", ma_arr.type())
+```
+
+```{python}
+# PyArrow
+pa_arr = pa.array([1, 2, 3, None, 5])
+print("pyarrow:", pa_arr)
+print("type:   ", pa_arr.type)
+```
+
+## Construction performance
+
+When converting Python data to Arrow arrays, Marrow is faster than PyArrow for numeric and string types when an explicit type is provided. Results below are from `pixi run bench_python` on Apple M-series hardware (n=100,000 elements, mean time):
+
+| Array type | marrow | PyArrow | speedup |
+|------------|-------:|--------:|---------|
+| `int64` (explicit type) | 0.37 ms | 0.89 ms | **2.4×** |
+| `int64` + nulls (explicit) | 0.36 ms | 0.87 ms | **2.4×** |
+| `float64` (explicit) | 0.34 ms | 0.48 ms | **1.4×** |
+| `float64` + nulls | 0.34 ms | 0.51 ms | **1.5×** |
+| `string` (explicit) | 0.72 ms | 1.06 ms | **1.5×** |
+| `string` + nulls | 0.70 ms | 1.04 ms | **1.5×** |
+| struct, primitive fields (explicit) | 5.41 ms | 6.54 ms | **1.2×** |
+| `int64` (inferred) | 1.40 ms | 1.27 ms | 1.1× slower |
+| `string` (inferred) | 1.57 ms | 1.02 ms | 1.5× slower |
+| nested list (inferred) | 3.92 ms | 2.36 ms | 1.7× slower |
+
+The pattern: **provide an explicit type when you know it**. Marrow's builder path is highly optimized for known types. When the type must be inferred from a scan of Python objects, PyArrow currently wins for complex nested structures.
+
+Reproduce with:
+
+```bash
+pixi run bench_python
+```
+
+## Zero-copy C Data Interface (Mojo)
+
+At the Mojo level, Marrow and PyArrow can exchange data with **zero copies** via the Arrow C Data Interface. The array buffers stay in place; only metadata pointers are transferred.
+
+```mojo
+from python import Python
+from marrow.c_data import CArrowArray, CArrowSchema
+
+var pa = Python.import_module("pyarrow")
+
+# Create a PyArrow array
+var pyarr = pa.array([1, 2, 3, 4, 5], mask=[False, False, False, False, True])
+
+# Export from PyArrow into C Data Interface structs (zero-copy)
+var c_array  = CArrowArray.from_pyarrow(pyarr)
+var c_schema = CArrowSchema.from_pyarrow(pyarr.type)
+
+# Convert schema to Marrow DataType
+var dtype = c_schema.to_dtype()    # int64
+
+# Wrap the array data (still zero-copy — shares PyArrow's buffers)
+var data   = c_array.to_array(dtype)
+var typed  = data.as_int64()
+
+print(typed.is_valid(0))    # True
+print(typed.is_valid(4))    # False — null
+print(typed.unsafe_get(0))  # 1
+print(typed.unsafe_get(3))  # 4
+```
+
+::: {.callout-note}
+**Direction**: Consuming PyArrow data in Mojo works fully. Exporting Marrow arrays back to PyArrow via the C Data Interface is not yet implemented — release callbacks (required by the Arrow spec) can't be registered from Mojo yet.
+:::
+
+## Current limitations
+
+Direct Python-level conversion between Marrow and PyArrow arrays is not yet supported. Marrow arrays are opaque Mojo objects from Python's perspective — PyArrow can't iterate over them directly:
+
+```{python}
+#| error: true
+ma_arr = ma.array([1, 2, 3])
+pa.array(ma_arr)   # TypeError: not iterable
+```
+
+For now, if you need to pass data from Marrow to PyArrow, reconstruct via Python first:
+
+```{python}
+# Workaround: round-trip through Python repr
+# (only practical for small arrays)
+ma_arr = ma.array([1, 2, 3, None, 5])
+print(ma_arr)  # inspect the values, then recreate in PyArrow if needed
+```
+
+Native Python-level Arrow C Data Interface support is planned for a future release.

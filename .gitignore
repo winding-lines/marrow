@@ -169,6 +169,12 @@ cython_debug/
 .pixi
 *.egg-info
 
+# Quarto
+docs/_site/
+docs/.quarto/
+docs/**/.jupyter_cache/
+*.quarto_ipynb
+
 # Mojo build files
 kgen.trace.*
 

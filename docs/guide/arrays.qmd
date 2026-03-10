@@ -1,0 +1,201 @@
+---
+title: "Arrays"
+---
+
+Arrays are the core data structure in Marrow. They are **immutable** and **columnar** — values are stored contiguously in memory with a separate validity bitmap that tracks null positions.
+
+```{python}
+#| echo: false
+import sys
+sys.path.insert(0, "../../python")
+import marrow as ma
+```
+
+## Primitive arrays
+
+Primitive arrays hold fixed-size scalar values: booleans, integers, and floats.
+
+```{python}
+# Integer arrays
+i64 = ma.array([1, 2, 3, 4, 5])
+i32 = ma.array([1, 2, 3, 4, 5], type=ma.int32())
+u8  = ma.array([0, 127, 255],   type=ma.uint8())
+
+print(i64)
+print(i32)
+print(u8)
+```
+
+```{python}
+# Floating point
+f32 = ma.array([1.0, 2.5, 3.14], type=ma.float32())
+f64 = ma.array([1.0, 2.5, 3.14])   # float64 inferred
+print(f32)
+print(f64)
+```
+
+```{python}
+# Boolean
+b = ma.array([True, False, True, False])
+print(b)
+print("true count: ", b.true_count())
+print("false count:", b.false_count())
+```
+
+### Null values
+
+Pass `None` to mark a position as null. The validity bitmap tracks which positions are valid.
+
+```{python}
+arr = ma.array([1, None, 3, None, 5])
+print(arr)
+print("null count:", arr.null_count())
+print("is_valid(0):", arr.is_valid(0))   # True
+print("is_valid(1):", arr.is_valid(1))   # False — null
+```
+
+::: {.callout-note}
+**Null is not zero.** `is_valid(1)` is `False` — the value at index 1 is absent entirely, not 0 or empty.
+:::
+
+### Inspecting arrays
+
+```{python}
+arr = ma.array([10, 20, 30, None, 50], type=ma.int32())
+
+print("length:    ", arr.__len__())
+print("null count:", arr.null_count())
+print("type:      ", arr.type())
+print("as string: ", str(arr))
+```
+
+## String arrays
+
+String arrays store variable-length UTF-8 strings.
+
+```{python}
+s = ma.array(["hello", None, "world", "mañana"])
+print(s)
+print("null count:", s.null_count())
+print("is_valid(1):", s.is_valid(1))
+```
+
+Access individual values with `__getitem__`:
+
+```{python}
+print(s.__getitem__(0))    # "hello"
+print(s.__getitem__(3))    # "mañana"
+```
+
+## List arrays
+
+List arrays store variable-length sequences. Each element is itself a list.
+
+```{python}
+nested = ma.array([[1, 2], [3, 4, 5], [6]])
+print(nested)
+print("type:", nested.type())
+```
+
+### Flatten
+
+`flatten()` returns the child array with all list elements concatenated:
+
+```{python}
+flat = nested.flatten()
+print("flattened:", flat)
+```
+
+### Value lengths
+
+`value_lengths()` returns how many elements each list contains:
+
+```{python}
+lengths = nested.value_lengths()
+print("lengths:", lengths)   # [2, 3, 1]
+```
+
+### Nulls in list arrays
+
+```{python}
+with_null = ma.array([[1, 2], None, [3, 4, 5]])
+print(with_null)
+print("null count:", with_null.null_count())
+```
+
+## Struct arrays
+
+Struct arrays store rows of named fields — like a table with one row per element.
+
+```{python}
+people = ma.array([
+    {"name": "Alice", "age": 30},
+    {"name": "Bob",   "age": 25},
+    {"name": None,    "age": 40},   # null name
+])
+print(people)
+print("type:", people.type())
+```
+
+### Accessing fields
+
+Use `field(index)` to extract a column by position:
+
+```{python}
+names = people.field(0)   # first field — "name"
+ages  = people.field(1)   # second field — "age"
+print("names:", names)
+print("ages: ", ages)
+```
+
+::: {.callout-tip}
+The field order matches the order the keys appear in the first dict element (or the explicit schema — see [Type System](types.qmd)).
+:::
+
+### Nested null handling
+
+A null at the struct level means the entire row is absent. Field-level nulls mean a specific field is absent for that row.
+
+```{python}
+partial = ma.array([
+    {"x": 1,    "y": 1.5},
+    {"x": None, "y": 2.5},   # x is null for this row
+    None,                      # entire row is null
+])
+print(partial)
+print("struct null count:", partial.null_count())   # 1 (the full-row null)
+xs = partial.field(0)
+print("x field:")
+print(xs)
+print("x null count:", xs.null_count())   # 1 (the field-level null)
+```
+
+## Slicing
+
+`slice(offset, length)` returns a zero-copy view of a sub-range. No data is copied.
+
+```{python}
+arr = ma.array([10, 20, 30, None, 50, 60])
+print("original: ", arr)
+print("slice(2, 3):", arr.slice(2, 3))   # [30, NULL, 50]
+print("slice(0, 4):", arr.slice(0, 4))   # [10, 20, 30, NULL]
+```
+
+Slicing works on all array types:
+
+```{python}
+s = ma.array(["a", "b", "c", "d", "e"])
+print(s.slice(1, 3))   # ["b", "c", "d"]
+```
+
+## FixedSizeList arrays
+
+FixedSizeList arrays store sequences of a fixed length per element — useful for embedding vectors or coordinates.
+
+```{python}
+# 2D coordinates: each element has exactly 2 values
+coords = ma.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+print(coords)
+print("type:", coords.type())
+print("flatten:", coords.flatten())
+```

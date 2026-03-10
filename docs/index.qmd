@@ -1,0 +1,99 @@
+---
+title: "Marrow"
+subtitle: "Apache Arrow in Mojo"
+---
+
+Marrow is an implementation of [Apache Arrow](https://arrow.apache.org) written in [Mojo](https://www.modular.com/mojo). It provides a columnar in-memory array format with null handling, SIMD-accelerated compute kernels, GPU support, and a Python binding layer that outperforms PyArrow on numeric array construction.
+
+## Build
+
+```bash
+git clone https://github.com/kszucs/marrow
+cd marrow
+pixi run build_python    # compiles python/marrow.so
+```
+
+Then in Python:
+
+```python
+import marrow as ma
+```
+
+## 5-minute example
+
+```{python}
+import sys
+sys.path.insert(0, "../python")
+import marrow as ma
+```
+
+### Create arrays
+
+```{python}
+# Primitive arrays — type is inferred from the Python data
+a = ma.array([1, 2, 3, None, 5])
+b = ma.array([10, 20, 30, 40, 50])
+
+print(a)
+print(b)
+```
+
+```{python}
+# Strings and nested structures work too
+names  = ma.array(["Alice", "Bob", None, "Dana"])
+scores = ma.array([9.5, 8.2, 7.8, None])
+print(names)
+print(scores)
+```
+
+### Arithmetic
+
+Null values propagate through element-wise operations — if either input is null, the output is null.
+
+```{python}
+result = ma.add(a, b)
+print(result)   # index 3 is null because a[3] is null
+```
+
+```{python}
+print(ma.mul(a, b))
+```
+
+### Aggregates
+
+Aggregates skip null values.
+
+```{python}
+print("sum:    ", ma.sum_(a))    # 1+2+3+5 = 11, null skipped
+print("min:    ", ma.min_(a))
+print("max:    ", ma.max_(a))
+print("product:", ma.product(a))
+```
+
+### Filter and drop nulls
+
+```{python}
+mask = ma.array([True, False, True, False, True])
+print("filter:", ma.filter_(a, mask))
+print("drop nulls:", ma.drop_nulls(a))
+```
+
+### Inspect arrays
+
+```{python}
+print("length:    ", a.__len__())
+print("null count:", a.null_count())
+print("type:      ", a.type())
+print("is_valid(3):", a.is_valid(3))   # False — index 3 is null
+```
+
+---
+
+## What's next
+
+| Page | What you'll learn |
+|------|------------------|
+| [Arrays](guide/arrays.qmd) | All array types, nulls, slicing, nested structures |
+| [Compute](guide/compute.qmd) | Arithmetic, aggregates, filter, drop_nulls |
+| [Type System](guide/types.qmd) | Type inference, explicit schemas, struct types |
+| [PyArrow Interop](guide/interop.qmd) | Benchmarks vs PyArrow, zero-copy C Data Interface |

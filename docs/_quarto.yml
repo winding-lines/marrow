@@ -1,0 +1,35 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "Marrow"
+  description: "Apache Arrow in Mojo"
+  navbar:
+    left:
+      - text: "Quickstart"
+        href: index.qmd
+      - text: "Guides"
+        menu:
+          - text: "Arrays"
+            href: guide/arrays.qmd
+          - text: "Compute"
+            href: guide/compute.qmd
+          - text: "Type System"
+            href: guide/types.qmd
+          - text: "PyArrow Interop"
+            href: guide/interop.qmd
+    right:
+      - icon: github
+        href: https://github.com/kszucs/marrow
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    code-copy: true
+    highlight-style: github
+
+execute:
+  freeze: auto
+  cache: true

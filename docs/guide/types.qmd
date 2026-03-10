@@ -1,0 +1,163 @@
+---
+title: "Type System"
+---
+
+Marrow's type system follows the [Apache Arrow specification](https://arrow.apache.org/docs/format/Columnar.html). Types are represented as `DataType` objects and can be constructed explicitly or inferred from Python data.
+
+```{python}
+#| echo: false
+import sys
+sys.path.insert(0, "../../python")
+import marrow as ma
+```
+
+## Available types
+
+| Constructor | Arrow type | Python equivalent |
+|-------------|-----------|-------------------|
+| `ma.bool_()` | `bool` | `bool` |
+| `ma.int8()` | `int8` | — |
+| `ma.int16()` | `int16` | — |
+| `ma.int32()` | `int32` | — |
+| `ma.int64()` | `int64` | `int` |
+| `ma.uint8()` | `uint8` | — |
+| `ma.uint16()` | `uint16` | — |
+| `ma.uint32()` | `uint32` | — |
+| `ma.uint64()` | `uint64` | — |
+| `ma.float16()` | `float16` | — |
+| `ma.float32()` | `float32` | — |
+| `ma.float64()` | `float64` | `float` |
+| `ma.string()` | `utf8` | `str` |
+
+For nested types, types are constructed with helper functions:
+
+| Constructor | Arrow type |
+|-------------|-----------|
+| `ma.field("name", dtype)` | named field descriptor |
+| `ma.struct([field, ...])` | struct with named fields |
+
+```{python}
+# Type objects are just values — print them to inspect
+print(ma.int64())
+print(ma.float32())
+print(ma.string())
+```
+
+## Type inference
+
+When `type=` is omitted from `ma.array()`, the type is inferred from the data in a single pass:
+
+```{python}
+print(ma.infer_type([1, 2, 3]))             # int64  (Python int)
+print(ma.infer_type([1.0, 2.0]))            # float64  (Python float)
+print(ma.infer_type([True, False]))         # bool
+print(ma.infer_type(["a", "b", "c"]))       # string
+print(ma.infer_type([[1, 2], [3, 4]]))      # list<int64>
+print(ma.infer_type([{"x": 1, "y": 1.5}])) # struct<x: int64, y: float64>
+```
+
+### Inference rules
+
+- **`int`** → `int64`
+- **`float`** → `float64`
+- **`bool`** → `bool`
+- **`str`** → `string`
+- **`list` / `tuple`** → `list(T)` where `T` is inferred from child elements
+- **`dict`** → `struct(field1: T1, field2: T2, ...)` — field names taken from keys, types inferred from values
+- **`None`** mixed with typed values → typed array with a null at that position
+
+### When inference fails
+
+Inference requires at least one non-None element to determine the type. An all-`None` list needs an explicit type:
+
+```{python}
+#| error: true
+# This raises — can't infer type from all Nones
+ma.array([None, None])
+```
+
+```{python}
+# Provide an explicit type instead
+arr = ma.array([None, None], type=ma.int64())
+print(arr)
+print("null count:", arr.null_count())
+```
+
+Mixing incompatible Python types also raises:
+
+```{python}
+#| error: true
+ma.array([1, "two", 3])   # int and str are incompatible
+```
+
+## Explicit types
+
+Providing `type=` skips inference and coerces the data:
+
+```{python}
+# Coerce Python ints to int32
+arr = ma.array([1, 2, 3, 4], type=ma.int32())
+print(arr)
+
+# Coerce to float32
+arr = ma.array([1, 2, 3], type=ma.float32())
+print(arr)
+```
+
+Explicit types are also faster — no inference pass over the data.
+
+## Struct types
+
+Structs group multiple named fields into a single array. Use `ma.field()` and `ma.struct()` to build a schema, then pass it as `type=`:
+
+```{python}
+schema = ma.struct([
+    ma.field("name",  ma.string()),
+    ma.field("score", ma.float64()),
+    ma.field("rank",  ma.int32()),
+])
+print(schema)
+```
+
+```{python}
+records = ma.array([
+    {"name": "Alice", "score": 9.5, "rank": 1},
+    {"name": "Bob",   "score": 8.2, "rank": 2},
+    {"name": "Carol", "score": None, "rank": 3},   # null score
+], type=schema)
+
+print(records)
+```
+
+Access fields by position:
+
+```{python}
+print("names: ", records.field(0))
+print("scores:", records.field(1))
+print("ranks: ", records.field(2))
+```
+
+## Nested list types
+
+List arrays hold variable-length sequences. Type inference handles the common cases automatically:
+
+```{python}
+nested = ma.array([[1, 2, 3], [4, 5]])
+print(nested.type())   # list<int64>
+
+nested_f = ma.array([[1.0, 2.0], [3.0]])
+print(nested_f.type())  # list<float64>
+```
+
+::: {.callout-note}
+Explicit list type construction via `type=` is not yet exposed at the Python level. For full schema control over nested lists, use the Mojo API with `ListBuilder` and an explicit child builder type.
+:::
+
+## Checking types at runtime
+
+```{python}
+arr = ma.array([1, 2, 3])
+t = arr.type()
+print(t)
+print(type(t).__name__)   # DataType
+```
