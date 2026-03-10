@@ -621,7 +621,7 @@ fn make_converter(
             )
         return PyStructConverter(builder^, children^, dtype)
     else:
-        raise Error("unsupported type: " + String(dtype))
+        raise Error("unsupported type: {}".format(dtype))
 
 
 # ---------------------------------------------------------------------------

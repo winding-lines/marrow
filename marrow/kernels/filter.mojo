@@ -152,10 +152,9 @@ fn filter_[
     """
     if len(array) != len(selection):
         raise Error(
-            "filter: array length "
-            + String(len(array))
-            + " != selection length "
-            + String(len(selection))
+            "filter: array length {} != selection length {}".format(
+                len(array), len(selection)
+            )
         )
     var n = len(array)
     var out_len = count_true(selection)
@@ -304,10 +303,9 @@ fn filter_(
     """
     if len(array) != len(selection):
         raise Error(
-            "filter: array length "
-            + String(len(array))
-            + " != selection length "
-            + String(len(selection))
+            "filter: array length {} != selection length {}".format(
+                len(array), len(selection)
+            )
         )
 
     # Step 1+2: compute and filter per-element lengths
@@ -450,20 +448,16 @@ fn filter_(array: Array, selection: Array) raises -> Array:
     var mask = selection.as_bool()
 
     if array.dtype == bool_:
-        return Array(
-            filter_[bool_](PrimitiveArray[bool_](data=array), mask)
-        )
+        return Array(filter_[bool_](PrimitiveArray[bool_](data=array), mask))
 
     comptime for dtype in numeric_dtypes:
         if array.dtype == dtype:
-            return Array(
-                filter_[dtype](array.as_primitive[dtype](), mask)
-            )
+            return Array(filter_[dtype](array.as_primitive[dtype](), mask))
 
     if array.dtype.is_string():
         return Array(filter_(array.as_string(), mask))
 
-    raise Error("filter: unsupported dtype " + String(array.dtype))
+    raise Error("filter: unsupported dtype {}".format(array.dtype))
 
 
 # ---------------------------------------------------------------------------
@@ -502,4 +496,4 @@ fn drop_nulls(array: Array) raises -> Array:
         if array.dtype == dtype:
             return Array(drop_nulls[dtype](PrimitiveArray[dtype](data=array)))
 
-    raise Error("drop_nulls: unsupported dtype " + String(array.dtype))
+    raise Error("drop_nulls: unsupported dtype {}".format(array.dtype))

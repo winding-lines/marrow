@@ -130,9 +130,9 @@ struct Array(
             self = Array(py.downcast_value_ptr[StructArray]()[])
         else:
             raise Error(
-                "cannot convert Python object of type '"
-                + String(py.__class__.__name__)
-                + "' to Array"
+                "cannot convert Python object of type '{}' to Array".format(
+                    py.__class__.__name__
+                )
             )
 
     fn is_valid(self, index: Int) -> Bool:
@@ -183,7 +183,7 @@ struct Array(
         elif self.dtype.is_struct():
             return self.as_struct().to_python_object()
         else:
-            raise Error("unsupported type: " + String(self.dtype))
+            raise Error("unsupported type: {}".format(self.dtype))
 
     fn as_primitive[T: DataType](self) raises -> PrimitiveArray[T]:
         return PrimitiveArray[T](self)
@@ -331,10 +331,9 @@ struct PrimitiveArray[T: DataType](
     fn __getitem__(self, index: Int) raises -> Self.scalar:
         if index < 0 or index >= self.length:
             raise Error(
-                "index "
-                + String(index)
-                + " out of bounds for length "
-                + String(self.length)
+                "index {} out of bounds for length {}".format(
+                    index, self.length
+                )
             )
         return self.unsafe_get(index)
 

@@ -92,7 +92,7 @@ struct CArrowSchema(Copyable):
         elif dtype.is_string():
             fmt = "u"
         elif dtype.is_fixed_size_list():
-            fmt = "+w:" + String(dtype.size)
+            fmt = "+w:{}".format(dtype.size)
             n_children = 1
             children = alloc[UnsafePointer[CArrowSchema, MutAnyOrigin]](1)
             var child = CArrowSchema.from_field(dtype.fields[0])
@@ -196,7 +196,7 @@ struct CArrowSchema(Copyable):
                 fields.append(self.children[i][].to_field())
             return struct_(fields)
         else:
-            raise Error("Unknown format: " + fmt)
+            raise Error("Unknown format: {}".format(fmt))
 
     fn to_field(self) raises -> Field:
         var name = StringSlice(unsafe_from_utf8_ptr=self.name)
@@ -390,7 +390,7 @@ struct CArrowArray(Movable):
                 )
                 children.append(child_array^)
         else:
-            raise Error("unsupported dtype for buffer import: " + String(dtype))
+            raise Error("unsupported dtype for buffer import: {}".format(dtype))
 
         return Array(
             dtype=dtype.copy(),
@@ -581,7 +581,7 @@ struct ArrowArrayStream(Copyable):
         var schema = alloc[CArrowSchema](1)
         var err = self.handle[].get_schema(self.handle, schema)
         if err != 0:
-            raise Error("Failed to get schema " + String(err))
+            raise Error("Failed to get schema {}".format(err))
         if not schema:
             raise Error("The schema pointer is null")
         return schema.take_pointee()
@@ -591,7 +591,7 @@ struct ArrowArrayStream(Copyable):
         var arrow_array = alloc[CArrowArray](1)
         var err = self.handle[].get_next(self.handle, arrow_array)
         if err != 0:
-            raise Error("Failed to get next arrow array " + String(err))
+            raise Error("Failed to get next arrow array {}".format(err))
         if not arrow_array:
             raise Error("The arrow array pointer is null")
         return arrow_array.take_pointee()

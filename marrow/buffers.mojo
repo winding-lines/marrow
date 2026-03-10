@@ -242,7 +242,7 @@ struct Allocation(Movable):
             elif api == "hip":
                 return DeviceType.ROCM_HOST
             else:
-                raise Error("device_type: unsupported host API: " + api)
+                raise Error("device_type: unsupported host API: {}".format(api))
         elif self._device:
             var api = self._device.value().context().api()
             if api == "cuda":
@@ -252,7 +252,9 @@ struct Allocation(Movable):
             elif api == "metal":
                 return DeviceType.METAL
             else:
-                raise Error("device_type: unsupported device API: " + api)
+                raise Error(
+                    "device_type: unsupported device API: {}".format(api)
+                )
         else:
             return DeviceType.CPU
 

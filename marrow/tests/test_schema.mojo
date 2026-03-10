@@ -44,7 +44,7 @@ def test_schema_primitive_fields() raises:
 
     # Check the names of the fields in the schema
     for i in range(nb_fields):
-        assert_equal(schema.field(index=i).name, "field" + String(i + 1))
+        assert_equal(schema.field(index=i).name, "field{}".format(i + 1))
 
 
 def test_schema_names() raises -> None:
