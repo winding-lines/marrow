@@ -426,12 +426,15 @@ struct PyListConverter(PyConverter):
         ref cpy = Python().cpython()
         var n = Int(cpy.PyObject_Length(values))
         var none_ptr = cpy.Py_None()
+        self._builder.reserve(n)
         for i in range(n):
             var item = cpy.PyList_GetItem(values, i)
             if cpy.Py_Is(item, none_ptr):
                 self._builder.append_null()
             else:
-                self._child.extend(item)
+                var inner_n = Int(cpy.PyObject_Length(item))
+                for j in range(inner_n):
+                    self._child.append(cpy.PyList_GetItem(item, j))
                 self._builder.append_valid()
 
     fn append(mut self, value: PyObjectPtr) raises:
@@ -439,7 +442,9 @@ struct PyListConverter(PyConverter):
         if cpy.Py_Is(value, cpy.Py_None()):
             self._builder.append_null()
         else:
-            self._child.extend(value)
+            var n = Int(cpy.PyObject_Length(value))
+            for i in range(n):
+                self._child.append(cpy.PyList_GetItem(value, i))
             self._builder.append_valid()
 
 
