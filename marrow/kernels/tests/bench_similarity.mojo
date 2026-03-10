@@ -30,7 +30,7 @@ fn _make_vectors(n_vectors: Int, dim: Int) raises -> FixedSizeListArray:
     return builder.finish_typed()
 
 
-fn _make_query(dim: Int) -> PrimitiveArray[float32]:
+fn _make_query(dim: Int) raises -> PrimitiveArray[float32]:
     """Build a query vector of given dimension."""
     var b = PrimitiveBuilder[float32](dim)
     for i in range(dim):
@@ -117,7 +117,7 @@ fn _print_row(kernel: String, n: Int, dim: Int, us: Float64):
     print(kernel + pad1 + n_str + pad2 + dim_str + pad3 + String(us) + " us")
 
 
-def main():
+def main() raises:
     if not has_accelerator():
         print("No GPU accelerator found, running CPU-only benchmarks.")
 
