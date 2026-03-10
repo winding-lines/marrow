@@ -179,7 +179,6 @@ def test_sub_float64():
 def test_sub_propagates_nulls():
     a = ma.array([10, None, 30])
     b = ma.array([1, 2, 3])
-    breakpoint()
     result = ma.sub(a, b)
     assert result.__len__() == 3
     assert result.null_count() == 1

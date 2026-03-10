@@ -20,5 +20,5 @@ jobs:
       run: pixi run fmt
     - name: tests
       run: |
-        pixi run test
+        pixi run test --no-gpu
         pixi run package
