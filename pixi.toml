@@ -31,4 +31,3 @@ pytest-benchmark = ">=5.2.3,<6"
 
 [pypi-dependencies]
 pyarrow = ">=23.0.0, <24"
-polars = ">=1.0.0"
