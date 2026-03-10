@@ -399,10 +399,10 @@ fn reduce_simd[
 
     Parameters:
         T: Array DataType (same for input and accumulator).
-        combine: fn[W](acc, val) -> acc, called with W for the main loop and W=1
+        combine: Fn[W](acc, val) -> acc, called with W for the main loop and W=1
                  for the scalar tail.  Since Scalar[T] == SIMD[T, 1], the same
                  function works for both.
-        horizontal: fn[W](SIMD[T, W]) -> Scalar[T], applied once to collapse the
+        horizontal: Fn[W](SIMD[T, W]) -> Scalar[T], applied once to collapse the
                     SIMD accumulator at the end of the main loop.  Wrap Mojo's
                     built-in SIMD methods: v.reduce_add(), v.reduce_min(), etc.
 

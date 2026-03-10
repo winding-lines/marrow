@@ -28,7 +28,7 @@ function pointer is called multiple times with different runtime inputs,
 which does not trigger the crash.
 """
 
-from benchmark import (
+from std.benchmark import (
     Bench,
     BenchConfig,
     Bencher,
@@ -85,7 +85,7 @@ fn bench_add[T: DataType](mut b: Bencher, size: Int) raises:
 
 @parameter
 fn bench_add_nulls[T: DataType](mut b: Bencher, size: Int) raises:
-    """add() with 10% nulls in both inputs."""
+    """Add() with 10% nulls in both inputs."""
     var lhs = _make_array_with_nulls[T](size)
     var rhs = _make_array_with_nulls[T](size)
 

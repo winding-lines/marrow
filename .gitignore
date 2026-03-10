@@ -178,6 +178,7 @@ docs/_freeze/
 
 # Mojo build files
 kgen.trace.*
+package/
 
 # vscode
 .vscode/

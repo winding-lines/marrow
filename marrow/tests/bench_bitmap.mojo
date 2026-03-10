@@ -19,7 +19,7 @@ template instantiation of bench_fn is created; the same function pointer is
 called multiple times with different runtime inputs.
 """
 
-from benchmark import (
+from std.benchmark import (
     Bench,
     BenchConfig,
     Bencher,
@@ -74,7 +74,7 @@ fn bench_count_set_bits(mut b: Bencher, size: Int) raises:
 
 @parameter
 fn bench_count_set_bits_aligned(mut b: Bencher, size: Int) raises:
-    """count_set_bits with byte_offset=128 (64-byte aligned, lead_bytes=0)."""
+    """Count_set_bits with byte_offset=128 (64-byte aligned, lead_bytes=0)."""
     var bm = _make_alternating(size + 2048).slice(128 << 3, size)
 
     @always_inline
@@ -88,7 +88,7 @@ fn bench_count_set_bits_aligned(mut b: Bencher, size: Int) raises:
 
 @parameter
 fn bench_count_set_bits_unaligned(mut b: Bencher, size: Int) raises:
-    """count_set_bits with byte_offset=96 (NOT 64-byte aligned, lead_bytes=32).
+    """Count_set_bits with byte_offset=96 (NOT 64-byte aligned, lead_bytes=32).
     """
     var bm = _make_alternating(size + 2048).slice(96 << 3, size)
 
@@ -103,43 +103,48 @@ fn bench_count_set_bits_unaligned(mut b: Bencher, size: Int) raises:
 
 @parameter
 fn bench_and(mut b: Bencher, size: Int) raises:
-    var a = _make_half_set(size)
-    var bm = _make_alternating(size)
+    var lhs = _make_half_set(size)
+    var rhs = _make_alternating(size)
 
     @always_inline
     @parameter
     fn call_fn() raises:
-        var r = a & bm
+        var r = lhs & rhs
         keep(r._length)
 
     b.iter[call_fn]()
+    keep(lhs._length)
+    keep(rhs._length)
 
 
 @parameter
 fn bench_or(mut b: Bencher, size: Int) raises:
-    var a = _make_half_set(size)
-    var bm = _make_alternating(size)
+    var lhs = _make_half_set(size)
+    var rhs = _make_alternating(size)
 
     @always_inline
     @parameter
     fn call_fn() raises:
-        var r = a | bm
+        var r = lhs | rhs
         keep(r._length)
 
     b.iter[call_fn]()
+    keep(lhs._length)
+    keep(rhs._length)
 
 
 @parameter
 fn bench_invert(mut b: Bencher, size: Int) raises:
-    var bm = _make_alternating(size)
+    var bitmap = _make_alternating(size)
 
     @always_inline
     @parameter
     fn call_fn() raises:
-        var r = ~bm
+        var r = ~bitmap
         keep(r._length)
 
     b.iter[call_fn]()
+    keep(bitmap._length)
 
 
 @parameter
@@ -175,45 +180,49 @@ fn bench_invert_cache_aligned(mut b: Bencher, size: Int) raises:
     """Invert with a byte_offset that is already 64-byte aligned (lead_bytes=0).
     """
     # 128-byte = 1024-bit offset → byte_offset=128, 128 & 63 == 0, no lead bytes.
-    var bm = _make_alternating(size + 2048).slice(128 << 3, size)
+    var bitmap = _make_alternating(size + 2048).slice(128 << 3, size)
 
     @always_inline
     @parameter
     fn call_fn() raises:
-        var r = ~bm
+        var r = ~bitmap
         keep(r._length)
 
     b.iter[call_fn]()
+    keep(bitmap._length)
 
 
 @parameter
 fn bench_invert_cache_unaligned(mut b: Bencher, size: Int) raises:
     """Invert with a byte_offset that is NOT 64-byte aligned (lead_bytes=32)."""
     # 96-byte = 768-bit offset → byte_offset=96, 96 & 63 == 32, lead_bytes=32.
-    var bm = _make_alternating(size + 2048).slice(96 << 3, size)
+    var bitmap = _make_alternating(size + 2048).slice(96 << 3, size)
 
     @always_inline
     @parameter
     fn call_fn() raises:
-        var r = ~bm
+        var r = ~bitmap
         keep(r._length)
 
     b.iter[call_fn]()
+    keep(bitmap._length)
 
 
 @parameter
 fn bench_and_cache_unaligned(mut b: Bencher, size: Int) raises:
     """AND of two bitmaps both at byte_offset=96 (lead_bytes=32, same shift)."""
-    var a = _make_half_set(size + 2048).slice(96 << 3, size)
-    var bm = _make_alternating(size + 2048).slice(96 << 3, size)
+    var lhs = _make_half_set(size + 2048).slice(96 << 3, size)
+    var rhs = _make_alternating(size + 2048).slice(96 << 3, size)
 
     @always_inline
     @parameter
     fn call_fn() raises:
-        var r = a & bm
+        var r = lhs & rhs
         keep(r._length)
 
     b.iter[call_fn]()
+    keep(lhs._length)
+    keep(rhs._length)
 
 
 # ---------------------------------------------------------------------------
@@ -229,32 +238,36 @@ fn bench_and_cache_unaligned(mut b: Bencher, size: Int) raises:
 fn bench_and_same_offset(mut b: Bencher, size: Int) raises:
     """AND of two bitmaps sharing the same non-zero sub-byte offset (pure SIMD, no shift).
     """
-    var a = _make_half_set(size).slice(3, size - 8)
-    var bm = _make_alternating(size).slice(3, size - 8)
+    var lhs = _make_half_set(size).slice(3, size - 8)
+    var rhs = _make_alternating(size).slice(3, size - 8)
 
     @always_inline
     @parameter
     fn call_fn() raises:
-        var r = a & bm
+        var r = lhs & rhs
         keep(r._length)
 
     b.iter[call_fn]()
+    keep(lhs._length)
+    keep(rhs._length)
 
 
 @parameter
 fn bench_and_diff_offset(mut b: Bencher, size: Int) raises:
     """AND of two bitmaps with different sub-byte offsets (one-sided shift-combine).
     """
-    var a = _make_half_set(size).slice(3, size - 8)
-    var bm = _make_alternating(size).slice(5, size - 8)
+    var lhs = _make_half_set(size).slice(3, size - 8)
+    var rhs = _make_alternating(size).slice(5, size - 8)
 
     @always_inline
     @parameter
     fn call_fn() raises:
-        var r = a & bm
+        var r = lhs & rhs
         keep(r._length)
 
     b.iter[call_fn]()
+    keep(lhs._length)
+    keep(rhs._length)
 
 
 # ---------------------------------------------------------------------------

@@ -4,10 +4,9 @@ Run with: pixi run bench_similarity
 """
 
 from std.sys import has_accelerator
-from time import perf_counter_ns
-
-from benchmark import keep
-from gpu.host import DeviceContext
+from std.time import perf_counter_ns
+from std.benchmark import keep
+from std.gpu.host import DeviceContext
 
 from marrow.arrays import Array, PrimitiveArray, FixedSizeListArray
 from marrow.builders import AnyBuilder, PrimitiveBuilder, FixedSizeListBuilder
@@ -22,7 +21,7 @@ fn _make_vectors(n_vectors: Int, dim: Int) raises -> FixedSizeListArray:
     for i in range(total):
         # Simple deterministic "pseudo-random" values
         b.unsafe_append(
-            Scalar[float32.native](((i * 7 + 13) % 1000) / 1000.0 - 0.5)
+            Scalar[float32.native](Float64((i * 7 + 13) % 1000) / 1000.0 - 0.5)
         )
     var builder = FixedSizeListBuilder(AnyBuilder(b^), list_size=dim)
     for _ in range(n_vectors):
@@ -35,7 +34,7 @@ fn _make_query(dim: Int) raises -> PrimitiveArray[float32]:
     var b = PrimitiveBuilder[float32](dim)
     for i in range(dim):
         b.unsafe_append(
-            Scalar[float32.native](((i * 11 + 17) % 1000) / 1000.0 - 0.5)
+            Scalar[float32.native](Float64((i * 11 + 17) % 1000) / 1000.0 - 0.5)
         )
     return b.finish_typed()
 
