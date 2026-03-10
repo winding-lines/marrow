@@ -10,7 +10,13 @@ from std.python import PythonObject, ConvertibleToPython, ConvertibleFromPython
 from marrow.arrays import Array
 from marrow.kernels.aggregate import  sum_, product, min_, max_, any_, all_
 from marrow.kernels.arithmetic import add, sub, mul, div
-from marrow.kernels.filter import filter_, drop_nulls
+from marrow.kernels.filter import filter_ as _filter_overloaded, drop_nulls
+
+# TODO: use explicit Array types in the helper functions below
+# otherwise for filter_ at least mojo is unable to resolve the
+# right overload
+fn filter_(array: Array, selection: Array) raises -> Array:
+    return _filter_overloaded(array, selection)
 
 
 fn pyfunction[
@@ -53,7 +59,7 @@ def add_to_module(mut mb: PythonModuleBuilder) raises -> None:
     mb.def_function[pyfunction[sub]()]("sub", docstring="Subtract all valid elements.")
     mb.def_function[pyfunction[mul]()]("mul", docstring="Multiply all valid elements.")
     mb.def_function[pyfunction[div]()]("div", docstring="Divide all valid elements.")
-    # mb.def_function[pyfunction[filter_]()]("filter_", docstring="Filter an array with a boolean mask.")
+    mb.def_function[pyfunction[filter_]()]("filter_", docstring="Filter an array with a boolean mask.")
     mb.def_function[pyfunction[drop_nulls]()]("drop_nulls", docstring="Drop null values from an array.")
 
 

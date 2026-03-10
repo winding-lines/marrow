@@ -155,3 +155,158 @@ def test_all_skips_nulls_finds_false():
 def test_all_empty_or_all_null_returns_true():
     # identity for all_ is True
     assert ma.all_(ma.array([True, True], type=ma.bool_())) == True
+
+
+# ── sub ──────────────────────────────────────────────────────────────────────
+
+
+def test_sub_int64():
+    a = ma.array([10, 20, 30])
+    b = ma.array([1, 2, 3])
+    result = ma.sub(a, b)
+    assert result.__len__() == 3
+    assert result.null_count() == 0
+
+
+def test_sub_float64():
+    a = ma.array([5.0, 3.0, 1.0])
+    b = ma.array([1.0, 1.0, 1.0])
+    result = ma.sub(a, b)
+    assert result.__len__() == 3
+    assert result.null_count() == 0
+
+
+def test_sub_propagates_nulls():
+    a = ma.array([10, None, 30])
+    b = ma.array([1, 2, 3])
+    breakpoint()
+    result = ma.sub(a, b)
+    assert result.__len__() == 3
+    assert result.null_count() == 1
+
+
+# ── mul ──────────────────────────────────────────────────────────────────────
+
+
+def test_mul_int64():
+    a = ma.array([2, 3, 4])
+    b = ma.array([5, 6, 7])
+    result = ma.mul(a, b)
+    assert result.__len__() == 3
+    assert result.null_count() == 0
+
+
+def test_mul_float64():
+    a = ma.array([1.5, 2.0, 3.0])
+    b = ma.array([2.0, 2.0, 2.0])
+    result = ma.mul(a, b)
+    assert result.__len__() == 3
+    assert result.null_count() == 0
+
+
+def test_mul_propagates_nulls():
+    a = ma.array([2, None, 4])
+    b = ma.array([5, 6, None])
+    result = ma.mul(a, b)
+    assert result.__len__() == 3
+    assert result.null_count() == 2
+
+
+# ── div ──────────────────────────────────────────────────────────────────────
+
+
+def test_div_int64():
+    a = ma.array([10, 20, 30])
+    b = ma.array([2, 4, 5])
+    result = ma.div(a, b)
+    assert result.__len__() == 3
+    assert result.null_count() == 0
+
+
+def test_div_float64():
+    a = ma.array([9.0, 6.0, 3.0])
+    b = ma.array([3.0, 2.0, 1.0])
+    result = ma.div(a, b)
+    assert result.__len__() == 3
+    assert result.null_count() == 0
+
+
+def test_div_propagates_nulls():
+    a = ma.array([10, None, 30])
+    b = ma.array([2, 4, None])
+    result = ma.div(a, b)
+    assert result.__len__() == 3
+    assert result.null_count() == 2
+
+
+# ── filter_ ──────────────────────────────────────────────────────────────────
+
+
+def test_filter_int64_keeps_selected():
+    a = ma.array([1, 2, 3, 4, 5])
+    mask = ma.array([True, False, True, False, True])
+    result = ma.filter_(a, mask)
+    assert result.__len__() == 3
+    assert result.null_count() == 0
+
+
+def test_filter_float64():
+    a = ma.array([1.0, 2.0, 3.0])
+    mask = ma.array([False, True, True])
+    result = ma.filter_(a, mask)
+    assert result.__len__() == 2
+    assert result.null_count() == 0
+
+
+def test_filter_preserves_nulls():
+    a = ma.array([1, None, 3, None, 5])
+    mask = ma.array([True, True, True, False, True])
+    result = ma.filter_(a, mask)
+    assert result.__len__() == 4
+    assert result.null_count() == 1
+
+
+def test_filter_all_false_returns_empty():
+    a = ma.array([1, 2, 3])
+    mask = ma.array([False, False, False])
+    result = ma.filter_(a, mask)
+    assert result.__len__() == 0
+
+
+def test_filter_string_array():
+    a = ma.array(["hello", "world", "foo"])
+    mask = ma.array([True, False, True])
+    result = ma.filter_(a, mask)
+    assert result.__len__() == 2
+    assert result.null_count() == 0
+
+
+# ── drop_nulls ────────────────────────────────────────────────────────────────
+
+
+def test_drop_nulls_int64():
+    a = ma.array([1, None, 3, None, 5])
+    result = ma.drop_nulls(a)
+    assert result.__len__() == 3
+    assert result.null_count() == 0
+
+
+def test_drop_nulls_no_nulls():
+    a = ma.array([1, 2, 3])
+    result = ma.drop_nulls(a)
+    assert result.__len__() == 3
+    assert result.null_count() == 0
+
+
+def test_drop_nulls_all_null():
+    a = ma.array([None, None, None], type=ma.int64())
+    result = ma.drop_nulls(a)
+    assert result.__len__() == 0
+    assert result.null_count() == 0
+
+
+def test_drop_nulls_float64():
+    a = ma.array([1.0, None, 3.0])
+    result = ma.drop_nulls(a)
+    assert result.__len__() == 2
+    assert result.null_count() == 0
