@@ -93,7 +93,7 @@ fn unary[
     InT: DataType,
     OutT: DataType,
     func: fn(Scalar[InT.native]) -> Scalar[OutT.native],
-](array: PrimitiveArray[InT]) -> PrimitiveArray[OutT]:
+](array: PrimitiveArray[InT]) raises -> PrimitiveArray[OutT]:
     """Apply a scalar function element-wise to produce a new array.
 
     Null propagation: if input element is null, output element is null.
