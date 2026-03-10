@@ -56,6 +56,9 @@ trait Builder(ImplicitlyDestructible, Movable):
     fn dtype(self) -> DataType:
         ...
 
+    fn reserve(mut self, additional: Int) raises:
+        ...
+
     fn append_null(mut self) raises:
         ...
 
@@ -89,6 +92,7 @@ struct AnyBuilder(ImplicitlyCopyable, Movable):
     var _virt_length: fn(ArcPointer[NoneType]) -> Int
     var _virt_null_count: fn(ArcPointer[NoneType]) -> Int
     var _virt_dtype: fn(ArcPointer[NoneType]) -> DataType
+    var _virt_reserve: fn(ArcPointer[NoneType], Int) raises
     var _virt_append_null: fn(ArcPointer[NoneType]) raises
     var _virt_append_nulls: fn(ArcPointer[NoneType], Int) raises
     var _virt_append_valid: fn(ArcPointer[NoneType]) raises
@@ -109,6 +113,12 @@ struct AnyBuilder(ImplicitlyCopyable, Movable):
     @staticmethod
     fn _tramp_dtype[T: Builder](ptr: ArcPointer[NoneType]) -> DataType:
         return rebind[ArcPointer[T]](ptr)[].dtype()
+
+    @staticmethod
+    fn _tramp_reserve[
+        T: Builder
+    ](ptr: ArcPointer[NoneType], additional: Int) raises:
+        rebind[ArcPointer[T]](ptr)[].reserve(additional)
 
     @staticmethod
     fn _tramp_append_null[T: Builder](ptr: ArcPointer[NoneType]) raises:
@@ -148,6 +158,7 @@ struct AnyBuilder(ImplicitlyCopyable, Movable):
         self._virt_length = Self._tramp_length[T]
         self._virt_null_count = Self._tramp_null_count[T]
         self._virt_dtype = Self._tramp_dtype[T]
+        self._virt_reserve = Self._tramp_reserve[T]
         self._virt_append_null = Self._tramp_append_null[T]
         self._virt_append_nulls = Self._tramp_append_nulls[T]
         self._virt_append_valid = Self._tramp_append_valid[T]
@@ -160,6 +171,7 @@ struct AnyBuilder(ImplicitlyCopyable, Movable):
         self._virt_length = copy._virt_length
         self._virt_null_count = copy._virt_null_count
         self._virt_dtype = copy._virt_dtype
+        self._virt_reserve = copy._virt_reserve
         self._virt_append_null = copy._virt_append_null
         self._virt_append_nulls = copy._virt_append_nulls
         self._virt_append_valid = copy._virt_append_valid
@@ -175,6 +187,9 @@ struct AnyBuilder(ImplicitlyCopyable, Movable):
 
     fn dtype(self) -> DataType:
         return self._virt_dtype(self._data)
+
+    fn reserve(mut self, additional: Int) raises:
+        self._virt_reserve(self._data, additional)
 
     fn append_null(mut self) raises:
         self._virt_append_null(self._data)
@@ -402,19 +417,26 @@ struct StringBuilder(Builder, Sized):
         self._capacity = capacity
 
     fn append(mut self, value: String) raises:
+        self.append(value.unsafe_ptr(), len(value))
+
+    fn append(
+        mut self, ptr: UnsafePointer[mut=False, Byte, _], length: Int
+    ) raises:
         if self._length >= self._capacity:
             self.grow(max(self._capacity * 2, self._length + 1))
         var index = self._length
         var last_offset = self._offsets.ptr.bitcast[UInt32]()[index]
-        var next_offset = last_offset + UInt32(len(value))
+        var next_offset = last_offset + UInt32(length)
         self._length += 1
         self._bitmap.set_bit(index, True)
         self._offsets.unsafe_set[DType.uint32](index + 1, next_offset)
-        self._values.resize[DType.uint8](next_offset)
+        var needed = Int(next_offset)
+        if needed > self._values.size:
+            self._values.resize[DType.uint8](max(self._values.size * 2, needed))
         memcpy(
             dest=self._values.ptr + Int(last_offset),
-            src=value.unsafe_ptr(),
-            count=len(value),
+            src=ptr,
+            count=length,
         )
 
     fn append_null(mut self) raises:
@@ -802,6 +824,8 @@ struct StructBuilder(Builder, Sized):
         var needed = self._length + additional
         if needed > self._capacity:
             self.grow(needed)
+        for i in range(len(self._children)):
+            self._children[i].reserve(additional)
 
     fn shrink_to_fit(mut self):
         pass

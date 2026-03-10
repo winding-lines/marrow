@@ -405,7 +405,8 @@ struct PyStringConverter(PyConverter):
         if cpy.Py_Is(value, cpy.Py_None()):
             b.append_null()
         else:
-            b.append(String(cpy.PyUnicode_AsUTF8AndSize(value)))
+            var s = cpy.PyUnicode_AsUTF8AndSize(value)
+            b.append(s.unsafe_ptr(), len(s))
 
 
 # ---------------------------------------------------------------------------
@@ -469,6 +470,7 @@ struct PyStructConverter(PyConverter):
         var n_fields = len(self._children)
         ref cpy = Python().cpython()
         var n = Int(cpy.PyObject_Length(values))
+        self._builder.reserve(n)
         var none_ptr = cpy.Py_None()
         for row in range(n):
             var item = cpy.PyList_GetItem(values, row)
