@@ -2,9 +2,17 @@ from std.python import PythonObject, ConvertibleToPython, Python
 from std.python.bindings import PythonModuleBuilder
 from std.collections import OwnedKwargsDict
 from std.python._cpython import CPython, PyObjectPtr, PyTypeObject, PyTypeObjectPtr
+from std.memory import ArcPointer
+from marrow.arrays import Array
+from marrow.builders import (
+    AnyBuilder,
+    PrimitiveBuilder,
+    StringBuilder,
+    ListBuilder,
+    StructBuilder,
+    make_builder,
+)
 import marrow.arrays as arr
-from marrow.builders import Builder
-import marrow.builders as bld
 import marrow.dtypes as dt
 
 
@@ -205,253 +213,323 @@ struct PyInferrer(Copyable, Movable):
 
 
 # ---------------------------------------------------------------------------
-# PyList — lightweight helper for fast CPython list access
+# PyConverter trait — interface for typed Python-to-Arrow converters
 # ---------------------------------------------------------------------------
 
 
-struct PyList:
-    """Zero-overhead access to CPython list internals via borrowed references."""
-
-    var _ptr: PyObjectPtr
-    var _n: Int
-    var _none: PyObjectPtr
-
-    fn __init__(out self, obj: PythonObject) raises:
-        ref cpy = Python().cpython()
-        self._ptr = obj._obj_ptr
-        self._n = len(obj)
-        self._none = cpy.Py_None()
-
-    @always_inline
-    fn __len__(self) -> Int:
-        return self._n
-
-    @always_inline
-    fn get(self, i: Int) -> PyObjectPtr:
-        """Get item at index i (borrowed reference)."""
-        return Python().cpython().PyList_GetItem(self._ptr, i)
-
-    @always_inline
-    fn is_none(self, item: PyObjectPtr) -> Bool:
-        return Python().cpython().Py_Is(item, self._none)
-
-    @always_inline
-    fn as_int(self, item: PyObjectPtr) -> Int:
-        return Python().cpython().PyLong_AsSsize_t(item)
-
-    @always_inline
-    fn as_float(self, item: PyObjectPtr) -> Float64:
-        return Python().cpython().PyFloat_AsDouble(item)
+trait PyConverter(Movable, ImplicitlyDestructible):
+    fn append(mut self, value: PythonObject) raises: ...
+    fn extend(mut self, values: PythonObject) raises: ...
+    fn builder(self) -> AnyBuilder: ...
 
 
 # ---------------------------------------------------------------------------
-# PyConverter — Python-to-Arrow converter mirroring PyArrow's Converter
+# PyAnyConverter — type-erased converter with dynamic dispatch
 # ---------------------------------------------------------------------------
 
 
-struct PyConverter(Copyable, Movable):
-    """Python-to-Arrow converter. Mirrors PyArrow's Converter hierarchy.
+struct PyAnyConverter(ImplicitlyCopyable, Movable):
+    """Type-erased converter dispatching through fn-ptr trampolines.
 
-    Public API: extend(sequence), append(value), finish() → PythonObject.
-    Type-specific helpers (_extend_primitive, _extend_string, etc.) are separated
-    for clarity, mirroring how PyArrow uses separate Converter subclasses per type.
+    `append` and `extend` are dispatched virtually to the typed converter.
+    `finish` is non-virtual — every converter delegates to the same
+    `AnyBuilder.finish()`, so the builder is captured at construction time.
     """
 
-    var builder: Builder
-    var has_nulls: Bool
-    var total_bytes: Int
+    var _data: ArcPointer[NoneType]
+    var _builder: AnyBuilder
+    var _virt_append: fn (ArcPointer[NoneType], PythonObject) raises
+    var _virt_extend: fn (ArcPointer[NoneType], PythonObject) raises
+    var _virt_drop: fn (var ArcPointer[NoneType])
 
-    fn __init__(
-        out self,
-        dtype: dt.DataType,
-        capacity: Int = 0,
-        has_nulls: Bool = True,
-        total_bytes: Int = 0,
+    @staticmethod
+    fn _tramp_append[T: PyConverter](
+        ptr: ArcPointer[NoneType], value: PythonObject
     ) raises:
-        self.builder = Builder(dtype, capacity)
-        self.has_nulls = has_nulls
-        self.total_bytes = total_bytes
+        rebind[ArcPointer[T]](ptr)[].append(value)
 
-    fn __init__(out self, var builder: Builder, has_nulls: Bool = True):
-        self.builder = builder^
-        self.has_nulls = has_nulls
-        self.total_bytes = 0
+    @staticmethod
+    fn _tramp_extend[T: PyConverter](
+        ptr: ArcPointer[NoneType], values: PythonObject
+    ) raises:
+        rebind[ArcPointer[T]](ptr)[].extend(values)
 
-    # ── public dispatch ─────────────────────────────────────────────────────
+    @staticmethod
+    fn _tramp_drop[T: PyConverter](var ptr: ArcPointer[NoneType]):
+        var typed = rebind[ArcPointer[T]](ptr^)
+        _ = typed^
 
-    fn extend(mut self, obj: PythonObject) raises:
-        """Append a full Python sequence. Dispatches once to a type-specific path."""
-        var dtype = self.builder.dtype()
-        comptime for T in dt.primitive_dtypes:
-            if dtype == T:
-                self._extend_primitive[T](obj)
-                return
-        if dtype.is_string():
-            self._extend_string(obj)
-        elif dtype.is_binary():
-            raise Error("binary array construction not yet supported")
-        elif dtype.is_list():
-            self._extend_list(obj)
-        elif dtype.is_struct():
-            self._extend_struct(obj)
-        else:
-            raise Error("unsupported type: " + String(dtype))
+    @implicit
+    fn __init__[T: PyConverter](out self, var value: T):
+        self._builder = value.builder()
+        var ptr = ArcPointer(value^)
+        self._data = rebind[ArcPointer[NoneType]](ptr^)
+        self._virt_append = Self._tramp_append[T]
+        self._virt_extend = Self._tramp_extend[T]
+        self._virt_drop = Self._tramp_drop[T]
+
+    fn __copyinit__(out self, read copy: Self):
+        self._data = copy._data.copy()
+        self._builder = copy._builder
+        self._virt_append = copy._virt_append
+        self._virt_extend = copy._virt_extend
+        self._virt_drop = copy._virt_drop
 
     fn append(mut self, value: PythonObject) raises:
-        """Append a single Python value."""
-        var dtype = self.builder.dtype()
-        comptime for T in dt.primitive_dtypes:
-            if dtype == T:
-                self._append_primitive[T](value)
-                return
-        if dtype.is_string():
-            self._append_string(value)
-        elif dtype.is_list():
-            self._append_list(value)
-        elif dtype.is_struct():
-            self._append_struct(value)
-        else:
-            raise Error("unsupported type: " + String(dtype))
+        self._virt_append(self._data, value)
 
-    fn finish(mut self) raises -> PythonObject:
-        return self.builder.finish().to_python_object()
+    fn extend(mut self, values: PythonObject) raises:
+        self._virt_extend(self._data, values)
 
-    # ── type-specific extend paths ───────────────────────────────────────────
+    fn finish(mut self) raises -> Array:
+        return self._builder.finish()
 
-    fn _extend_primitive[T: dt.DataType](mut self, obj: PythonObject) raises:
-        var pb = self.builder.as_primitive[T]()
+    fn __del__(deinit self):
+        self._virt_drop(self._data^)
+
+
+# ---------------------------------------------------------------------------
+# PyPrimitiveConverter — hot path for numeric/bool types
+# ---------------------------------------------------------------------------
+
+
+struct PyPrimitiveConverter[T: dt.DataType](PyConverter):
+    var _builder: AnyBuilder
+    var _has_nulls: Bool
+
+    fn __init__(out self, var builder: AnyBuilder, has_nulls: Bool = True):
+        self._builder = builder^
+        self._has_nulls = has_nulls
+
+    fn builder(self) -> AnyBuilder:
+        return self._builder
+
+    fn extend(mut self, values: PythonObject) raises:
+        var pb = self._builder.as_primitive[Self.T]()
         ref cpy = Python().cpython()
-        var n = len(obj)
-        var list_ptr = obj._obj_ptr
+        var n = len(values)
+        var list_ptr = values._obj_ptr
         var none_ptr = cpy.Py_None()
-        pb.reserve(n)
-        if self.has_nulls:
+        pb[].reserve(n)
+        if self._has_nulls:
             for i in range(n):
                 var item = cpy.PyList_GetItem(list_ptr, i)
                 if cpy.Py_Is(item, none_ptr):
-                    pb.unsafe_append_null()
+                    pb[].unsafe_append_null()
                 else:
-                    comptime if T.native.is_floating_point():
-                        pb.unsafe_append(Scalar[T.native](cpy.PyFloat_AsDouble(item)))
+                    comptime if Self.T.native.is_floating_point():
+                        pb[].unsafe_append(
+                            Scalar[Self.T.native](cpy.PyFloat_AsDouble(item))
+                        )
                     else:
-                        pb.unsafe_append(Scalar[T.native](cpy.PyLong_AsSsize_t(item)))
+                        pb[].unsafe_append(
+                            Scalar[Self.T.native](cpy.PyLong_AsSsize_t(item))
+                        )
         else:
             for i in range(n):
                 var item = cpy.PyList_GetItem(list_ptr, i)
-                comptime if T.native.is_floating_point():
-                    pb.unsafe_append(Scalar[T.native](cpy.PyFloat_AsDouble(item)))
+                comptime if Self.T.native.is_floating_point():
+                    pb[].unsafe_append(
+                        Scalar[Self.T.native](cpy.PyFloat_AsDouble(item))
+                    )
                 else:
-                    pb.unsafe_append(Scalar[T.native](cpy.PyLong_AsSsize_t(item)))
+                    pb[].unsafe_append(
+                        Scalar[Self.T.native](cpy.PyLong_AsSsize_t(item))
+                    )
 
-    fn _extend_string(mut self, obj: PythonObject) raises:
-        var sb = self.builder.as_string()
+    fn append(mut self, value: PythonObject) raises:
+        var pb = self._builder.as_primitive[Self.T]()
+        if value is None:
+            pb[].append_null()
+        else:
+            comptime if Self.T == dt.bool_:
+                pb[].append(value.__bool__())
+            else:
+                pb[].append(Scalar[Self.T.native](py=value))
+
+
+# ---------------------------------------------------------------------------
+# PyStringConverter — hot path for UTF-8 strings
+# ---------------------------------------------------------------------------
+
+
+struct PyStringConverter(PyConverter):
+    var _builder: AnyBuilder
+    var _has_nulls: Bool
+    var _total_bytes: Int
+
+    fn __init__(
+        out self,
+        var builder: AnyBuilder,
+        has_nulls: Bool = True,
+        total_bytes: Int = 0,
+    ):
+        self._builder = builder^
+        self._has_nulls = has_nulls
+        self._total_bytes = total_bytes
+
+    fn builder(self) -> AnyBuilder:
+        return self._builder
+
+    fn extend(mut self, values: PythonObject) raises:
+        var sb = self._builder.as_string()
         ref cpy = Python().cpython()
-        var n = len(obj)
-        var list_ptr = obj._obj_ptr
+        var n = len(values)
+        var list_ptr = values._obj_ptr
         var none_ptr = cpy.Py_None()
 
-        sb.reserve(n)
-        # Pre-compute total bytes if not already known from inference.
-        var total_bytes = self.total_bytes
+        sb[].reserve(n)
+        var total_bytes = self._total_bytes
         if total_bytes == 0:
             for i in range(n):
                 var item = cpy.PyList_GetItem(list_ptr, i)
                 if not cpy.Py_Is(item, none_ptr):
                     total_bytes += len(cpy.PyUnicode_AsUTF8AndSize(item))
-        sb.reserve_bytes(total_bytes)
+        sb[].reserve_bytes(total_bytes)
 
-        if self.has_nulls:
+        if self._has_nulls:
             for i in range(n):
                 var item = cpy.PyList_GetItem(list_ptr, i)
                 if cpy.Py_Is(item, none_ptr):
-                    sb.unsafe_append_null()
+                    sb[].unsafe_append_null()
                 else:
                     var s = cpy.PyUnicode_AsUTF8AndSize(item)
-                    sb.unsafe_append(s.unsafe_ptr(), len(s))
+                    sb[].unsafe_append(s.unsafe_ptr(), len(s))
         else:
             for i in range(n):
                 var item = cpy.PyList_GetItem(list_ptr, i)
                 var s = cpy.PyUnicode_AsUTF8AndSize(item)
-                sb.unsafe_append(s.unsafe_ptr(), len(s))
+                sb[].unsafe_append(s.unsafe_ptr(), len(s))
 
-    fn _extend_list(mut self, obj: PythonObject) raises:
-        var lb = self.builder.as_list()
-        var child = PyConverter(self.builder.child(0))
-        for element in obj:
+    fn append(mut self, value: PythonObject) raises:
+        var sb = self._builder.as_string()
+        if value is None:
+            sb[].append_null()
+        else:
+            sb[].append(String(py=value))
+
+
+# ---------------------------------------------------------------------------
+# PyListConverter — variable-length list conversion
+# ---------------------------------------------------------------------------
+
+
+struct PyListConverter(PyConverter):
+    var _builder: AnyBuilder
+    var _child: PyAnyConverter
+
+    fn __init__(out self, var builder: AnyBuilder, var child: PyAnyConverter):
+        self._builder = builder^
+        self._child = child^
+
+    fn builder(self) -> AnyBuilder:
+        return self._builder
+
+    fn extend(mut self, values: PythonObject) raises:
+        var lb = self._builder.as_list()
+        for element in values:
             if element is None:
-                lb.append_null()
+                lb[].append_null()
             else:
-                child.extend(element)
-                lb.append(True)
+                self._child.extend(element)
+                lb[].append(True)
 
-    fn _extend_struct(mut self, obj: PythonObject) raises:
-        var dtype = self.builder.dtype()
-        var sb = self.builder.as_struct()
-        var n_fields = len(dtype.fields)
-        var children = List[PyConverter]()
-        for i in range(n_fields):
-            children.append(PyConverter(self.builder.child(i)))
+    fn append(mut self, value: PythonObject) raises:
+        var lb = self._builder.as_list()
+        if value is None:
+            lb[].append_null()
+        else:
+            self._child.extend(value)
+            lb[].append(True)
 
-        # Cache field name PythonObjects to avoid repeated string creation
+
+# ---------------------------------------------------------------------------
+# PyStructConverter — struct/dict conversion
+# ---------------------------------------------------------------------------
+
+
+struct PyStructConverter(PyConverter):
+    var _builder: AnyBuilder
+    var _children: List[PyAnyConverter]
+    var _field_keys: List[PythonObject]
+
+    fn __init__(
+        out self,
+        var builder: AnyBuilder,
+        var children: List[PyAnyConverter],
+        dtype: dt.DataType,
+    ) raises:
         var field_keys = List[PythonObject]()
-        for i in range(n_fields):
+        for i in range(len(dtype.fields)):
             field_keys.append(PythonObject(dtype.fields[i].name))
+        self._builder = builder^
+        self._children = children^
+        self._field_keys = field_keys^
 
+    fn builder(self) -> AnyBuilder:
+        return self._builder
+
+    fn extend(mut self, values: PythonObject) raises:
+        var sb = self._builder.as_struct()
+        var n_fields = len(self._children)
         ref cpy = Python().cpython()
-        var list_ptr = obj._obj_ptr
-        var n = len(obj)
+        var list_ptr = values._obj_ptr
+        var n = len(values)
         var none_ptr = cpy.Py_None()
         for row in range(n):
             var item = cpy.PyList_GetItem(list_ptr, row)
             if cpy.Py_Is(item, none_ptr):
                 for i in range(n_fields):
-                    children[i].append(PythonObject(None))
-                sb.append(False)
+                    self._children[i].append(PythonObject(None))
+                sb[].append(False)
             else:
                 var dict_obj = PythonObject(from_borrowed=item)
                 for i in range(n_fields):
-                    children[i].append(dict_obj[field_keys[i]])
-                sb.append(True)
+                    self._children[i].append(dict_obj.get(self._field_keys[i]))
+                sb[].append(True)
 
-    # ── type-specific append paths ───────────────────────────────────────────
-
-    fn _append_primitive[T: dt.DataType](mut self, value: PythonObject) raises:
-        var pb = self.builder.as_primitive[T]()
-        if value is None:
-            pb.append_null()
-        else:
-            comptime if T == dt.bool_:
-                pb.append(value.__bool__())
-            else:
-                pb.append(Scalar[T.native](py=value))
-
-    fn _append_string(mut self, value: PythonObject) raises:
-        var sb = self.builder.as_string()
-        if value is None:
-            sb.append_null()
-        else:
-            sb.append(String(py=value))
-
-    fn _append_list(mut self, value: PythonObject) raises:
-        var lb = self.builder.as_list()
-        if value is None:
-            lb.append_null()
-        else:
-            var child = PyConverter(self.builder.child(0))
-            child.extend(value)
-            lb.append(True)
-
-    fn _append_struct(mut self, value: PythonObject) raises:
-        var dtype = self.builder.dtype()
-        var sb = self.builder.as_struct()
+    fn append(mut self, value: PythonObject) raises:
+        var sb = self._builder.as_struct()
         var is_null = value is None
-        for i in range(len(dtype.fields)):
-            var child = PyConverter(self.builder.child(i))
+        for i in range(len(self._children)):
             if is_null:
-                child.append(PythonObject(None))
+                self._children[i].append(PythonObject(None))
             else:
-                child.append(value.get(dtype.fields[i].name))
-        sb.append(not is_null)
+                self._children[i].append(value.get(self._field_keys[i]))
+        sb[].append(not is_null)
+
+
+# ---------------------------------------------------------------------------
+# Factory functions for converters
+# ---------------------------------------------------------------------------
+
+
+fn make_converter(
+    dtype: dt.DataType,
+    var builder: AnyBuilder,
+    has_nulls: Bool = True,
+    total_bytes: Int = 0,
+) raises -> PyAnyConverter:
+    """Create a typed converter wrapping the given builder."""
+    comptime for T in dt.primitive_dtypes:
+        if dtype == T:
+            return PyPrimitiveConverter[T](builder^, has_nulls)
+    if dtype.is_string():
+        return PyStringConverter(builder^, has_nulls, total_bytes)
+    elif dtype.is_list():
+        var child_builder = builder.as_list()[].values()
+        var child = make_converter(dtype.fields[0].dtype, child_builder)
+        return PyListConverter(builder^, child^)
+    elif dtype.is_struct():
+        var children = List[PyAnyConverter]()
+        for i in range(len(dtype.fields)):
+            var field_builder = builder.as_struct()[].child(i)
+            children.append(
+                make_converter(dtype.fields[i].dtype, field_builder)
+            )
+        return PyStructConverter(builder^, children^, dtype)
+    else:
+        raise Error("unsupported type: " + String(dtype))
 
 
 # ---------------------------------------------------------------------------
@@ -484,9 +562,10 @@ fn array(
             " (provide type= explicitly)"
         )
 
-    var builder = PyConverter(dtype, len(obj), has_nulls, total_bytes)
-    builder.extend(obj)
-    return builder.finish()
+    var builder = make_builder(dtype, len(obj))
+    var converter = make_converter(dtype, builder^, has_nulls, total_bytes)
+    converter.extend(obj)
+    return converter.finish().to_python_object()
 
 
 def add_to_module(mut mb: PythonModuleBuilder) raises -> None:
