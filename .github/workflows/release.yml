@@ -49,7 +49,7 @@ jobs:
         VERSION="${{ steps.version.outputs.version }}"
         MOJO_VERSION="${{ steps.mojo_version.outputs.mojo_version }}"
         sed -i "/^context:/,/^[^ ]/{s/^  version: .*/  version: \"${VERSION}\"/}" recipe/recipe.yaml
-        sed -i "/^context:/,/^[^ ]/{s/^  mojo_version: .*/  mojo_version: \"${MOJO_VERSION}\"/}" recipe/recipe.yaml
+        sed -i "/^context:/,/^[^ ]/{s/^  mojo_version: .*/  mojo_version: \"==${MOJO_VERSION}\"/}" recipe/recipe.yaml
         pixi run -e package package-conda
     - name: Upload to prefix.dev
       run: pixi run -e package rattler-build upload prefix -c marrow output/*/marrow-*.conda
