@@ -1,9 +1,12 @@
 schema_version: 1
 
-# Bump this to match the git tag before tagging a release (e.g. v0.1.1 → "0.1.1").
+# The version is automatically updated from the git tag/commit.
+# Do not edit.
 context:
   version: "0.1.0"
   mojo_version: ">=0.26.2.0.dev2026030905, <0.26.3"
+# Do not edit end.
+   
 
 package:
   name: marrow
