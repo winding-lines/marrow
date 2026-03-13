@@ -30,7 +30,7 @@ docs_preview = { cmd = "quarto preview docs/", depends-on = [
 ], env = { PYTHONPATH = "python" } }
 
 [feature.package.dependencies]
-rattler-build = ">=0.35"
+rattler-build = ">=0.35,<1"
 
 [feature.package.tasks]
 package-conda = "rattler-build build --recipe recipe/recipe.yaml --output-dir output"
