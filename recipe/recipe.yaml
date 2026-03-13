@@ -1,0 +1,35 @@
+schema_version: 1
+
+# Bump this to match the git tag before tagging a release (e.g. v0.1.1 → "0.1.1").
+context:
+  version: "0.1.0"
+  mojo_version: ">=0.26.2.0.dev2026030905"
+
+package:
+  name: marrow
+  version: ${{ version }}
+
+source:
+  # git source requires no sha256 — rattler-build clones the tagged commit directly.
+  git: https://github.com/kszucs/marrow.git
+  tag: v${{ version }}
+
+build:
+  number: 0
+  # mojopkg files are architecture-independent source; skip the binary prefix
+  # rewrite pass by marking this as a noarch package.
+  noarch: generic
+  script:
+    - mkdir -p "${PREFIX}/lib/mojo"
+    - mojo package marrow -o "${PREFIX}/lib/mojo/marrow.mojopkg"
+
+requirements:
+  build:
+    - mojo ${{ mojo_version }}
+
+about:
+  homepage: https://github.com/kszucs/marrow
+  repository: https://github.com/kszucs/marrow
+  license: Apache-2.0
+  license_file: LICENSE.txt
+  summary: Apache Arrow implementation in Mojo — columnar in-memory data with PyArrow interop.

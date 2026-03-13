@@ -29,6 +29,15 @@ docs_preview = { cmd = "quarto preview docs/", depends-on = [
   "build_python",
 ], env = { PYTHONPATH = "python" } }
 
+[feature.package.dependencies]
+rattler-build = ">=0.35"
+
+[feature.package.tasks]
+package-conda = "rattler-build build --recipe recipe/recipe.yaml --output-dir output"
+
+[environments]
+package = { features = ["package"], no-default-feature = true }
+
 [dependencies]
 ipython = ">=9.11.0,<10"
 jupyter = ">=1.1,<2"

@@ -225,6 +225,42 @@ pixi run bench_gpu          # GPU arithmetic benchmarks
 - Prefer explicit `if/else` over early-return `if + return` guard clauses. Keep the control flow flat and readable with `if/else` branches.
 - Prefer PyArrow's API naming everywhere — both in the Mojo core types and in the Python bindings. When in doubt, match PyArrow's method names and signatures.
 
+## Releasing to prefix.dev
+
+Marrow is published to [prefix.dev](https://prefix.dev/channels/marrow) as a conda package via rattler-build. The release is triggered automatically by pushing a git tag.
+
+### Steps to cut a release
+
+1. **Update the version in two places** — they must stay in sync:
+   - `pixi.toml`: set `version = "X.Y.Z"` in the `[workspace]` table
+   - `recipe/recipe.yaml`: set `version: "X.Y.Z"` under `context:`
+
+2. **Commit the version bump:**
+   ```bash
+   git add pixi.toml recipe/recipe.yaml
+   git commit -m "chore: bump version to X.Y.Z"
+   ```
+
+3. **Tag and push** — the `release.yml` workflow fires on `v*` tags:
+   ```bash
+   git tag vX.Y.Z
+   git push origin main vX.Y.Z
+   ```
+
+The workflow will:
+- Run the full test suite
+- Build `marrow.mojopkg` with `pixi run package`
+- Build the conda package with `rattler-build` via `pixi run -e package package-conda`
+- Upload the `.conda` artifact to the `marrow` channel on prefix.dev (requires `PREFIX_API_TOKEN` secret in the repo settings)
+- Create a GitHub release with auto-generated notes and both artifacts attached
+
+### Local conda build (optional)
+
+```bash
+pixi run -e package package-conda
+# output lands in output/noarch/marrow-X.Y.Z-*.conda
+```
+
 ## Mojo Version Notes
 
 Mojo is a moving target with very frequent breaking changes. On confusing compile errors, check the changelog: https://docs.modular.com/mojo/changelog/
