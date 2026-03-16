@@ -61,6 +61,9 @@ trait Builder(ImplicitlyDestructible, Movable):
     fn append_null(mut self) raises:
         ...
 
+    fn extend(mut self, arr: Array) raises:
+        ...
+
     fn finish(mut self) raises -> Array:
         ...
 
@@ -87,6 +90,7 @@ struct AnyBuilder(ImplicitlyCopyable, Movable):
     var _virt_dtype: fn(ArcPointer[NoneType]) -> DataType
     var _virt_reserve: fn(ArcPointer[NoneType], Int) raises
     var _virt_append_null: fn(ArcPointer[NoneType]) raises
+    var _virt_extend: fn(ArcPointer[NoneType], Array) raises
     var _virt_finish: fn(ArcPointer[NoneType]) raises -> Array
     var _virt_reset: fn(ArcPointer[NoneType])
     var _virt_drop: fn(var ArcPointer[NoneType])
@@ -116,6 +120,10 @@ struct AnyBuilder(ImplicitlyCopyable, Movable):
         rebind[ArcPointer[T]](ptr)[].append_null()
 
     @staticmethod
+    fn _tramp_extend[T: Builder](ptr: ArcPointer[NoneType], arr: Array) raises:
+        rebind[ArcPointer[T]](ptr)[].extend(arr)
+
+    @staticmethod
     fn _tramp_finish[
         T: Builder
     ](ptr: ArcPointer[NoneType],) raises -> Array:
@@ -141,6 +149,7 @@ struct AnyBuilder(ImplicitlyCopyable, Movable):
         self._virt_dtype = Self._tramp_dtype[T]
         self._virt_reserve = Self._tramp_reserve[T]
         self._virt_append_null = Self._tramp_append_null[T]
+        self._virt_extend = Self._tramp_extend[T]
         self._virt_finish = Self._tramp_finish[T]
         self._virt_reset = Self._tramp_reset[T]
         self._virt_drop = Self._tramp_drop[T]
@@ -152,6 +161,7 @@ struct AnyBuilder(ImplicitlyCopyable, Movable):
         self._virt_dtype = copy._virt_dtype
         self._virt_reserve = copy._virt_reserve
         self._virt_append_null = copy._virt_append_null
+        self._virt_extend = copy._virt_extend
         self._virt_finish = copy._virt_finish
         self._virt_reset = copy._virt_reset
         self._virt_drop = copy._virt_drop
@@ -170,6 +180,9 @@ struct AnyBuilder(ImplicitlyCopyable, Movable):
 
     fn append_null(mut self) raises:
         self._virt_append_null(self._data)
+
+    fn extend(mut self, arr: Array) raises:
+        self._virt_extend(self._data, arr)
 
     fn finish(mut self) raises -> Array:
         return self._virt_finish(self._data)
@@ -288,6 +301,41 @@ struct PrimitiveBuilder[T: DataType](Builder, Sized):
             else:
                 self.append_null()
 
+    fn extend(mut self, arr: Array) raises:
+        self.extend(arr.as_primitive[Self.T]())
+
+    fn extend(mut self, arr: PrimitiveArray[Self.T]) raises:
+        """Bulk-append all elements from an existing PrimitiveArray."""
+        var n = arr.length
+        self.reserve(n)
+        if arr.nulls == 0:
+            self._bitmap.set_range(self._length, n, True)
+        else:
+            self._null_count += arr.nulls
+            if arr.bitmap:
+                var bm = arr.bitmap.value()
+                self._bitmap.extend(
+                    Bitmap(bm._buffer, bm._offset + arr.offset, n),
+                    self._length,
+                    n,
+                )
+            else:
+                self._bitmap.set_range(self._length, n, True)
+        comptime if Self.T == bool_:
+            var src = Bitmap(arr.buffer, arr.offset, n)
+            for i in range(n):
+                self._buffer.unsafe_set[DType.bool](
+                    self._length + i, src.is_valid(i)
+                )
+        else:
+            memcpy(
+                dest=self._buffer.ptr.bitcast[Scalar[Self.T.native]]()
+                + self._length,
+                src=arr.buffer.unsafe_ptr[Self.T.native](arr.offset),
+                count=n,
+            )
+        self._length += n
+
     fn reserve(mut self, additional: Int) raises:
         var needed = self._length + additional
         if needed > self._capacity:
@@ -391,6 +439,48 @@ struct StringBuilder(Builder, Sized):
                 self.append(values[i])
             else:
                 self.append_null()
+
+    fn extend(mut self, arr: Array) raises:
+        self.extend(arr.as_string())
+
+    fn extend(mut self, arr: StringArray) raises:
+        """Bulk-append all elements from an existing StringArray."""
+        var n = arr.length
+        var chunk_start = Int(arr.offsets.unsafe_get[DType.uint32](arr.offset))
+        var chunk_end = Int(
+            arr.offsets.unsafe_get[DType.uint32](arr.offset + n)
+        )
+        var chunk_bytes = chunk_end - chunk_start
+        self.reserve(n)
+        self.reserve_bytes(chunk_bytes)
+        if arr.nulls == 0:
+            self._bitmap.set_range(self._length, n, True)
+        else:
+            self._null_count += arr.nulls
+            if arr.bitmap:
+                var bm = arr.bitmap.value()
+                self._bitmap.extend(
+                    Bitmap(bm._buffer, bm._offset + arr.offset, n),
+                    self._length,
+                    n,
+                )
+            else:
+                self._bitmap.set_range(self._length, n, True)
+        var cur_bytes = Int(self._offsets.ptr.bitcast[UInt32]()[self._length])
+        for i in range(n):
+            var orig = Int(arr.offsets.unsafe_get[DType.uint32](arr.offset + i))
+            self._offsets.unsafe_set[DType.uint32](
+                self._length + i, UInt32(cur_bytes + orig - chunk_start)
+            )
+        self._offsets.unsafe_set[DType.uint32](
+            self._length + n, UInt32(cur_bytes + chunk_bytes)
+        )
+        memcpy(
+            dest=self._values.ptr + cur_bytes,
+            src=arr.values.ptr + chunk_start,
+            count=chunk_bytes,
+        )
+        self._length += n
 
     fn reserve(mut self, additional: Int) raises:
         var needed = self._length + additional
@@ -544,6 +634,46 @@ struct ListBuilder(Builder, Sized):
         )
         self._length += 1
 
+    fn extend(mut self, arr: Array) raises:
+        self.extend(arr.as_list())
+
+    fn extend(mut self, arr: ListArray) raises:
+        """Bulk-append all elements from an existing ListArray."""
+        var n = arr.length
+        self.reserve(n)
+        if arr.nulls == 0:
+            self._bitmap.set_range(self._length, n, True)
+        else:
+            self._null_count += arr.nulls
+            if arr.bitmap:
+                var bm = arr.bitmap.value()
+                self._bitmap.extend(
+                    Bitmap(bm._buffer, bm._offset + arr.offset, n),
+                    self._length,
+                    n,
+                )
+            else:
+                self._bitmap.set_range(self._length, n, True)
+        var child_start = Int(arr.offsets.unsafe_get[DType.int32](arr.offset))
+        var child_end = Int(arr.offsets.unsafe_get[DType.int32](arr.offset + n))
+        var cur_child_len = self._child.length()
+        for i in range(n):
+            var orig = Int(arr.offsets.unsafe_get[DType.int32](arr.offset + i))
+            self._offsets.unsafe_set[DType.uint32](
+                self._length + i,
+                UInt32(cur_child_len + orig - child_start),
+            )
+        self._offsets.unsafe_set[DType.uint32](
+            self._length + n,
+            UInt32(cur_child_len + child_end - child_start),
+        )
+        var child_slice = Array(copy=arr.values)
+        child_slice.offset = child_start
+        child_slice.length = child_end - child_start
+        child_slice.nulls = 0
+        self._child.extend(child_slice^)
+        self._length += n
+
     fn reserve(mut self, additional: Int) raises:
         var needed = self._length + additional
         if needed > self._capacity:
@@ -650,6 +780,34 @@ struct FixedSizeListBuilder(Builder, Sized):
         """Append valid without capacity check. Caller must ensure capacity."""
         self._bitmap.set_bit(self._length, True)
         self._length += 1
+
+    fn extend(mut self, arr: Array) raises:
+        self.extend(arr.as_fixed_size_list())
+
+    fn extend(mut self, arr: FixedSizeListArray) raises:
+        """Bulk-append all elements from an existing FixedSizeListArray."""
+        var n = arr.length
+        self.reserve(n)
+        if arr.nulls == 0:
+            self._bitmap.set_range(self._length, n, True)
+        else:
+            self._null_count += arr.nulls
+            if arr.bitmap:
+                var bm = arr.bitmap.value()
+                self._bitmap.extend(
+                    Bitmap(bm._buffer, bm._offset + arr.offset, n),
+                    self._length,
+                    n,
+                )
+            else:
+                self._bitmap.set_range(self._length, n, True)
+        var list_size = arr.dtype.size
+        var child_slice = Array(copy=arr.values)
+        child_slice.offset = arr.offset * list_size
+        child_slice.length = n * list_size
+        child_slice.nulls = 0
+        self._child.extend(child_slice^)
+        self._length += n
 
     fn reserve(mut self, additional: Int) raises:
         var needed = self._length + additional
@@ -761,6 +919,26 @@ struct StructBuilder(Builder, Sized):
         """Append valid without capacity check. Caller must ensure capacity."""
         self._bitmap.set_bit(self._length, True)
         self._length += 1
+
+    fn extend(mut self, arr: Array) raises:
+        self.extend(arr.as_struct())
+
+    fn extend(mut self, arr: StructArray) raises:
+        """Bulk-append all elements from an existing StructArray."""
+        var n = arr.length
+        self.reserve(n)
+        if arr.nulls == 0:
+            self._bitmap.set_range(self._length, n, True)
+        else:
+            self._null_count += arr.nulls
+            if arr.bitmap:
+                var bm = arr.bitmap.value()
+                self._bitmap.extend(bm, self._length, n)
+            else:
+                self._bitmap.set_range(self._length, n, True)
+        for f in range(len(arr.children)):
+            self._children[f].extend(Array(copy=arr.children[f]))
+        self._length += n
 
     fn reserve(mut self, additional: Int) raises:
         var needed = self._length + additional
