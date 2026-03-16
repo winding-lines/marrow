@@ -1608,5 +1608,33 @@ def test_array_eq_via_dispatch() raises:
     assert_true(a == b)
 
 
+def test_primitive_array_list_literal() raises:
+    var arr: PrimitiveArray[int64] = [1, 2, 3, 4, 5]
+    assert_equal(len(arr), 5)
+    assert_equal(arr[0], 1)
+    assert_equal(arr[4], 5)
+    assert_equal(arr.null_count(), 0)
+
+
+def test_primitive_array_list_literal_float() raises:
+    var arr: PrimitiveArray[float64] = [1.0, 2.5, 3.14]
+    assert_equal(len(arr), 3)
+    assert_equal(arr[0], 1.0)
+
+
+def test_string_array_list_literal() raises:
+    var arr: StringArray = ["hello", "world", "foo"]
+    assert_equal(len(arr), 3)
+    assert_equal(arr[0], "hello")
+    assert_equal(arr[1], "world")
+    assert_equal(arr[2], "foo")
+    assert_equal(arr.null_count(), 0)
+
+
+def test_primitive_array_list_literal_empty() raises:
+    var arr: PrimitiveArray[int32] = []
+    assert_equal(len(arr), 0)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

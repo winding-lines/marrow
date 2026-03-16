@@ -23,6 +23,7 @@ from std.python.conversions import ConvertibleFromPython, ConvertibleToPython
 from .buffers import Buffer, BufferBuilder
 from .bitmap import Bitmap, BitmapBuilder
 from .dtypes import *
+from .builders import PrimitiveBuilder, StringBuilder
 
 
 @fieldwise_init
@@ -323,6 +324,20 @@ struct PrimitiveArray[T: DataType](
     fn __init__(out self, *, py: PythonObject) raises:
         self = py.downcast_value_ptr[Self]()[].copy()
 
+    fn __init__(
+        out self, var *values: Self.scalar, __list_literal__: ()
+    ) raises:
+        """Constructs a primitive array from a list literal [v1, v2, ...].
+
+        Args:
+            values: The scalar values to populate the array with.
+            __list_literal__: Tells Mojo to use this method for list literal syntax.
+        """
+        var b = PrimitiveBuilder[Self.T](capacity=len(values))
+        for value in values:
+            b.unsafe_append(value)
+        self = b.finish_typed()
+
     @always_inline
     fn __len__(self) -> Int:
         return self.length
@@ -515,6 +530,18 @@ struct StringArray(
         self.bitmap = data.bitmap
         self.offsets = data.buffers[0]
         self.values = data.buffers[1]
+
+    fn __init__(out self, var *values: String, __list_literal__: ()) raises:
+        """Constructs a string array from a list literal ["a", "b", ...].
+
+        Args:
+            values: The string values to populate the array with.
+            __list_literal__: Tells Mojo to use this method for list literal syntax.
+        """
+        var b = StringBuilder(capacity=len(values))
+        for value in values:
+            b.append(value)
+        self = b.finish_typed()
 
     fn __len__(self) -> Int:
         """Return the number of elements in the array."""
