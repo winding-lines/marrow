@@ -123,35 +123,6 @@ python/                   # The Python module top level
 
 ## Implementation Patterns
 
-### Creating Arrays
-
-```mojo
-# From values (primitive)
-from marrow.arrays import array
-var a = array[int8](1, 2, 3, 4)
-
-# Building incrementally (string)
-var s = StringArray()
-s.unsafe_append("hello")
-s.unsafe_append("world")
-
-# From PyArrow (via Arrow C Data Interface)
-from marrow.c_data import CArrowArray, CArrowSchema
-var capsules = pyarrow_array.__arrow_c_array__()
-var dtype = CArrowSchema.from_pycapsule(capsules[0]).to_dtype()
-var data = CArrowArray.from_pycapsule(capsules[1])^.to_array(dtype)
-
-# To PyArrow — arrays expose __arrow_c_array__, so pa.array() works directly
-var pyarr = pa.array(data)
-```
-
-### Null Handling
-
-Arrays use a validity bitmap where `True` = valid, `False` = null:
-- Check validity: `array.is_valid(index)` or `array.data.is_valid(index)`
-- Access values: `unsafe_get(index)` (no bounds/null checking for performance)
-- Set values: `unsafe_set(index, value)`
-
 ### Type Constraints
 
 Mojo lacks dynamic dispatch, so the codebase uses:
@@ -174,23 +145,6 @@ The `Buffer` struct has an optional `device` field (`Optional[DeviceBuffer]`). W
 - `FixedSizeListArray.to_device(ctx)` — uploads child values and bitmap
 - `Buffer.to_device(ctx)` / `Bitmap.to_device(ctx)` — low-level transfer
 - GPU kernel results are device-only by default (null host ptr, device buffer set) — call `.to_host(ctx)` to read on CPU
-
-### GPU Kernel Pattern
-
-```mojo
-fn _my_kernel[dtype: DType](
-    # UnsafePointer params for GPU-accessible data
-    data: UnsafePointer[Scalar[dtype], MutAnyOrigin],
-    result: UnsafePointer[Scalar[dtype], MutAnyOrigin],
-    length: Int,
-):
-    var tid = global_idx.x
-    if tid < UInt(length):
-        result[tid] = ...  # per-element computation
-
-# Orchestration: check has_device(), upload if needed, launch kernel,
-# return device-only PrimitiveArray (no host copy)
-```
 
 ### Performance Guidelines
 
@@ -228,6 +182,25 @@ pixi run bench_gpu          # GPU arithmetic benchmarks
 
 - Prefer explicit `if/else` over early-return `if + return` guard clauses. Keep the control flow flat and readable with `if/else` branches.
 - Prefer PyArrow's API naming everywhere — both in the Mojo core types and in the Python bindings. When in doubt, match PyArrow's method names and signatures.
+- Use **conventional commits** for all commit messages (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`, etc.), with an optional scope in parentheses (e.g. `feat(kernels): add concat`).
+
+### Prior Art — Consult C++ and Rust Implementations First
+
+Before adding a new feature, kernel, or test suite, inspect the reference implementations in the sibling repositories:
+
+- **Arrow C++**: `../arrow/cpp` — the canonical implementation; use it for algorithmic details, edge cases, and test vectors. If not available locally, use `https://github.com/apache/arrow`.
+- **Arrow Rust** (`arrow-rs`): `../arrow-rs/` — often has cleaner, more modern API design; useful for naming and API shape. If not available locally, use `https://github.com/apache/arrow-rs`.
+
+This applies especially to: new kernels, array type behaviour, validity/null handling, offset semantics, and test coverage.
+
+### Kernel Implementation Pattern
+
+Kernels in `marrow/kernels/` are implemented as typed overloads first, with a type-erased `Array` overload as a thin dispatch layer:
+
+1. **Typed overloads** — one per concrete array type (`PrimitiveArray[T]`, `StringArray`, `ListArray`, etc.). These contain all the actual logic.
+2. **Type-erased overload** — accepts `List[Array]` (or `Array` for unary/binary kernels), converts to the appropriate typed list/value, and delegates to the typed overload. This is the "blanket" implementation that makes kernels usable from runtime-typed code.
+
+See `marrow/kernels/concat.mojo` and `marrow/kernels/filter.mojo` for examples.
 
 ## Releasing to prefix.dev
 
