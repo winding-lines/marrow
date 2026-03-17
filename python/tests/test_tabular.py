@@ -160,6 +160,7 @@ def test_eq_operator():
         }
     )
     assert batch.__eq__(batch2)
+    assert batch == batch2
 
 
 # ── Select ────────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ References:
 
 from std.python import Python, PythonObject
 from std.python.bindings import PythonModuleBuilder
+from pontoneer import TypeProtocolBuilder, RichCompareOps, NotImplementedError
 from std.collections import OwnedKwargsDict
 from marrow.tabular import RecordBatch
 from marrow.schema import Schema
@@ -66,7 +67,6 @@ fn _record_batch_shape(
     return Python.tuple(ptr[].num_rows(), ptr[].num_columns())
 
 
-
 fn _record_batch_column(
     ptr: UnsafePointer[RecordBatch, MutAnyOrigin], key: PythonObject
 ) raises -> PythonObject:
@@ -100,7 +100,6 @@ fn _record_batch_equals(
     return PythonObject(ptr[] == other_rb)
 
 
-
 fn _record_batch_select(
     ptr: UnsafePointer[RecordBatch, MutAnyOrigin], columns: PythonObject
 ) raises -> PythonObject:
@@ -119,7 +118,6 @@ fn _record_batch_select(
         return ptr[].select(names).to_python_object()
 
 
-
 fn _record_batch_add_column(
     ptr: UnsafePointer[RecordBatch, MutAnyOrigin],
     i: PythonObject,
@@ -127,9 +125,11 @@ fn _record_batch_add_column(
     column: PythonObject,
 ) raises -> PythonObject:
     """Return a new RecordBatch with `column` inserted at position `i`."""
-    return ptr[].add_column(
-        Int(py=i), Field(py=field), _py_array_to_mojo(column)
-    ).to_python_object()
+    return (
+        ptr[]
+        .add_column(Int(py=i), Field(py=field), _py_array_to_mojo(column))
+        .to_python_object()
+    )
 
 
 fn _record_batch_append_column(
@@ -138,9 +138,11 @@ fn _record_batch_append_column(
     column: PythonObject,
 ) raises -> PythonObject:
     """Return a new RecordBatch with `column` appended at the end."""
-    return ptr[].append_column(
-        Field(py=field), _py_array_to_mojo(column)
-    ).to_python_object()
+    return (
+        ptr[]
+        .append_column(Field(py=field), _py_array_to_mojo(column))
+        .to_python_object()
+    )
 
 
 fn _record_batch_set_column(
@@ -150,9 +152,11 @@ fn _record_batch_set_column(
     column: PythonObject,
 ) raises -> PythonObject:
     """Return a new RecordBatch with the column at `i` replaced."""
-    return ptr[].set_column(
-        Int(py=i), Field(py=field), _py_array_to_mojo(column)
-    ).to_python_object()
+    return (
+        ptr[]
+        .set_column(Int(py=i), Field(py=field), _py_array_to_mojo(column))
+        .to_python_object()
+    )
 
 
 fn _record_batch_to_pydict(
@@ -197,7 +201,9 @@ fn _record_batch_arrow_c_record_batch(
     requested_schema: PythonObject,
 ) raises -> PythonObject:
     """Export as Arrow C Data Interface (schema capsule, array capsule) pair."""
-    var schema_cap = CArrowSchema.from_schema(ptr[].schema.fields).to_pycapsule()
+    var schema_cap = CArrowSchema.from_schema(
+        ptr[].schema.fields
+    ).to_pycapsule()
     var struct_arr: Array = ptr[].to_struct_array()
     var array_cap = CArrowArray.from_array(struct_arr).to_pycapsule()
     return Python.tuple(schema_cap, array_cap)
@@ -207,8 +213,11 @@ fn _record_batch_arrow_c_array(
     ptr: UnsafePointer[RecordBatch, MutAnyOrigin],
     requested_schema: PythonObject,
 ) raises -> PythonObject:
-    """Export as Arrow C Data Interface (schema capsule, array capsule) pair via __arrow_c_array__."""
-    var schema_cap = CArrowSchema.from_schema(ptr[].schema.fields).to_pycapsule()
+    """Export as Arrow C Data Interface (schema capsule, array capsule) pair via __arrow_c_array__.
+    """
+    var schema_cap = CArrowSchema.from_schema(
+        ptr[].schema.fields
+    ).to_pycapsule()
     var struct_arr: Array = ptr[].to_struct_array()
     var array_cap = CArrowArray.from_array(struct_arr).to_pycapsule()
     return Python.tuple(schema_cap, array_cap)
@@ -243,9 +252,7 @@ fn record_batch(
         var columns = List[Array]()
         for child in struct_arr.children:
             columns.append(child.copy())
-        return RecordBatch(
-            schema=schema, columns=columns^
-        ).to_python_object()
+        return RecordBatch(schema=schema, columns=columns^).to_python_object()
 
     # Protocol: __arrow_c_array__ returning a struct (e.g. PyArrow RecordBatch)
     if builtins.hasattr(data, "__arrow_c_array__"):
@@ -258,9 +265,7 @@ fn record_batch(
         var columns = List[Array]()
         for child in struct_arr.children:
             columns.append(child.copy())
-        return RecordBatch(
-            schema=schema, columns=columns^
-        ).to_python_object()
+        return RecordBatch(schema=schema, columns=columns^).to_python_object()
 
     # Dict: {column_name: array, ...}
     if builtins.isinstance(data, builtins.dict):
@@ -297,17 +302,27 @@ fn record_batch(
     )
 
 
+def _record_batch_rich_compare(
+    first: RecordBatch, second: PythonObject, op: Int
+) raises -> Bool:
+    """Implement rich compare for RecordData."""
+    var second_rb = second.downcast_value_ptr[RecordBatch]()
+    if op == RichCompareOps.Py_EQ:
+        return first == second_rb[]
+    raise NotImplementedError()
+
+
 # ---------------------------------------------------------------------------
 # Module registration
 # ---------------------------------------------------------------------------
 
 
 def add_to_module(mut mb: PythonModuleBuilder) raises -> None:
-    """Add RecordBatch type and record_batch constructor to the Python module."""
+    """Add RecordBatch type and record_batch constructor to the Python module.
+    """
     ref rb_py = mb.add_type[RecordBatch]("RecordBatch")
     _ = (
-        rb_py
-        .def_method[_record_batch_schema]("schema")
+        rb_py.def_method[_record_batch_schema]("schema")
         .def_method[_record_batch_columns]("columns")
         .def_method[_record_batch_shape]("shape")
         .def_method[pymethod[RecordBatch.num_rows]()]("num_rows")
@@ -328,9 +343,13 @@ def add_to_module(mut mb: PythonModuleBuilder) raises -> None:
         .def_method[_record_batch_to_pydict]("to_pydict")
         .def_method[_record_batch_to_pylist]("to_pylist")
         .def_method[_record_batch_arrow_c_array]("__arrow_c_array__")
-        .def_method[_record_batch_arrow_c_record_batch]("__arrow_c_record_batch__")
+        .def_method[_record_batch_arrow_c_record_batch](
+            "__arrow_c_record_batch__"
+        )
         .def_method[_record_batch_arrow_c_schema]("__arrow_c_schema__")
     )
+    var rb_tp = TypeProtocolBuilder[RecordBatch](rb_py)
+    _ = rb_tp.def_richcompare[_record_batch_rich_compare]()
 
     mb.def_function[record_batch](
         "record_batch",
