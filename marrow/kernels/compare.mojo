@@ -81,13 +81,16 @@ def _elementwise_cmp_pack[
             )
 
     if ctx:
-        comptime if has_accelerator():
+        comptime if has_accelerator() and T.native != DType.float64:
             comptime gpu_width = simd_width_of[
                 T.native, target=get_gpu_target()
             ]()
             elementwise[process, gpu_width, target="gpu"](length, ctx.value())
         else:
-            raise Error("_elementwise_cmp_pack: no GPU accelerator available")
+            raise Error(
+                "_elementwise_cmp_pack: type not supported on GPU (float64 is"
+                " unsupported on Metal)"
+            )
     else:
         comptime cpu_width = simd_byte_width() // size_of[Scalar[T.native]]()
         elementwise[process, cpu_width, target="cpu", use_blocking_impl=True](

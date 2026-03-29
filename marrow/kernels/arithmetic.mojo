@@ -54,13 +54,16 @@ def _elementwise_unary[
         (output + i).store(func[W](input.load[width=W](i)))
 
     if ctx:
-        comptime if has_accelerator():
+        comptime if has_accelerator() and T.native != DType.float64:
             comptime gpu_width = simd_width_of[
                 T.native, target=get_gpu_target()
             ]()
             elementwise[process, gpu_width, target="gpu"](length, ctx.value())
         else:
-            raise Error("_elementwise_unary: no GPU accelerator available")
+            raise Error(
+                "_elementwise_unary: type not supported on GPU (float64 is"
+                " unsupported on Metal)"
+            )
     else:
         comptime cpu_width = simd_byte_width() // size_of[Scalar[T.native]]()
         elementwise[process, cpu_width, target="cpu", use_blocking_impl=True](
@@ -91,13 +94,16 @@ def _elementwise_binary[
         (output + i).store(func[W](lhs.load[width=W](i), rhs.load[width=W](i)))
 
     if ctx:
-        comptime if has_accelerator():
+        comptime if has_accelerator() and T.native != DType.float64:
             comptime gpu_width = simd_width_of[
                 T.native, target=get_gpu_target()
             ]()
             elementwise[process, gpu_width, target="gpu"](length, ctx.value())
         else:
-            raise Error("_elementwise_binary: no GPU accelerator available")
+            raise Error(
+                "_elementwise_binary: type not supported on GPU (float64 is"
+                " unsupported on Metal)"
+            )
     else:
         comptime cpu_width = simd_byte_width() // size_of[Scalar[T.native]]()
         elementwise[process, cpu_width, target="cpu", use_blocking_impl=True](
@@ -293,7 +299,9 @@ def _log10_fn[
 def _log1p_fn[
     T: DType, W: Int
 ](a: SIMD[T, W]) -> SIMD[T, W] where T.is_floating_point():
-    return math.log1p(a)
+    # std.math.log1p internally upcasts to float64 in recent Mojo nightlies,
+    # which is unsupported on Metal GPU. Use log(1 + a) instead.
+    return math.log(a + 1)
 
 
 def _floor_fn[T: DType, W: Int](a: SIMD[T, W]) -> SIMD[T, W]:
