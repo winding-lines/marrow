@@ -318,6 +318,18 @@ def test_string_builder() raises:
     assert_equal(frozen[1], "world")
 
 
+def test_string_builder_amortized() raises:
+    # Append many strings without pre-allocated bytes capacity.
+    # Exercises amortized reserve_bytes growth (previously O(N²)).
+    var a = StringBuilder()
+    for i in range(100):
+        a.append(String(i))
+    var frozen = a.finish()
+    assert_equal(len(frozen), 100)
+    for i in range(100):
+        assert_equal(frozen[i], String(i))
+
+
 def test_list_bool_array() raises:
     var bool_b = BoolBuilder(3)
     bool_b.append(True)

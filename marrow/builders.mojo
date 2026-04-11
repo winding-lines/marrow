@@ -548,8 +548,11 @@ struct StringBuilder(Builder, Sized):
 
     def reserve_bytes(mut self, additional: Int) raises:
         """Pre-allocate space in the byte data buffer."""
-        var needed = len(self._values) + additional
-        self._values.resize[DType.uint8](needed)
+        var used = Int(self._offsets.unsafe_get[DType.uint32](self._length))
+        var needed = used + additional
+        if needed > len(self._values):
+            var new_cap = max(len(self._values) * 2, needed)
+            self._values.resize[DType.uint8](new_cap)
 
     @always_inline
     def unsafe_append[origin: Origin](mut self, s: StringSlice[origin]):
