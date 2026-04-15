@@ -498,9 +498,7 @@ struct AnyDataType(
         if not self.is_primitive():
             raise Error("byte_width is only defined for primitive types")
 
-        comptime IsPrimitive[T: Movable & ImplicitlyDestructible] = conforms_to(
-            T, PrimitiveType
-        )
+        comptime IsPrimitive[T: Movable] = conforms_to(T, PrimitiveType)
 
         @parameter
         def f[T: PrimitiveType](t: T) -> Int:
