@@ -21,17 +21,35 @@ from std.builtin.variadics import Variadic, TypeList, _TypePredicateGenerator
 from std.builtin.rebind import trait_downcast
 from std.os import abort
 from std.sys import has_accelerator, CompilationTarget
+from std.sys.info import _accelerator_arch
 
 
 def has_accelerator_support[*dtypes: DType]() -> Bool:
     """Check if there is accelerator support for all given dtypes.
 
     For example Metal doesn't support float64 as of April 2026.
+
+    Also guards against Mojo toolchain regressions where the GPU architecture
+    string is malformed (e.g. 'metal:2-metal4' on an M2 with Metal 4 API).
+    The valid Metal targets are 'metal:1'–'metal:4'; anything else indicates
+    the toolchain cannot compile GPU kernels for this device and we fall back
+    to CPU.
     """
     if not has_accelerator():
         return False
     if not CompilationTarget.is_apple_silicon():
         return True
+    # Validate the GPU architecture string before attempting to compile any
+    # GPU kernel.  A malformed target (e.g. 'metal:2-metal4') causes a hard
+    # constraint failure deep inside simd_width_of, so we gate it out here.
+    comptime arch = _accelerator_arch()
+    comptime if (
+        arch != "metal:1"
+        and arch != "metal:2"
+        and arch != "metal:3"
+        and arch != "metal:4"
+    ):
+        return False
     comptime for dtype in dtypes:
         if dtype == DType.float64:
             return False
