@@ -1,4 +1,4 @@
-name: CI
+name: Tests
 
 on:
   push:
@@ -24,6 +24,11 @@ jobs:
         cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
         frozen: true
         environments: dev
+    - uses: actions/cache@v4
+      with:
+        path: .pixi/envs/dev/**/.mojo_cache
+        key: mojo-cache-dev-${{ runner.os }}-${{ hashFiles('pixi.lock', '**/*.mojo') }}
+        restore-keys: mojo-cache-dev-${{ runner.os }}-
     - name: tests
       run: |
         pixi run -e dev test_parallel --no-gpu
@@ -45,37 +50,22 @@ jobs:
         cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
         frozen: true
         environments: dev
+    - uses: actions/cache@v4
+      with:
+        path: .pixi/envs/dev/**/.mojo_cache
+        key: mojo-cache-dev-${{ runner.os }}-${{ hashFiles('pixi.lock', '**/*.mojo') }}
+        restore-keys: mojo-cache-dev-${{ runner.os }}-
     - name: tests
       run: |
         pixi run -e dev test_parallel --no-gpu
         pixi run package
 
-  bench-linux-x86_64:
-    name: bench (linux, x86_64)
-    runs-on: ubuntu-latest
-    env:
-      MODULAR_HOME: "/home/runner/.modular"
-      FORCE_COLOR: "1"
-      PYTEST_ADDOPTS: "--color=yes"
-    steps:
-    - name: Checkout repo
-      uses: actions/checkout@v2
-    - uses: prefix-dev/setup-pixi@v0.9.4
-      with:
-        cache: true
-        cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
-        frozen: true
-        environments: bench
-    - name: benchmarks
-      run: pixi run -e bench bench --no-gpu
-
-  # TODO: re-enable once ASAN builds are fast enough
-  # asan-linux-x86_64:
-  asan-linux-x86_64-disabled:
+  # TODO: re-enable once x86_64 ASAN compilation is fast enough
+  asan-linux-x86_64:
     name: asan (linux, x86_64)
     if: false
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       MODULAR_HOME: "/home/runner/.modular"
       FORCE_COLOR: "1"
@@ -89,5 +79,35 @@ jobs:
         cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
         frozen: true
         environments: asan
+    - uses: actions/cache@v4
+      with:
+        path: .pixi/envs/asan/**/.mojo_cache
+        key: mojo-cache-asan-${{ runner.os }}-${{ hashFiles('pixi.lock', '**/*.mojo') }}
+        restore-keys: mojo-cache-asan-${{ runner.os }}-
     - name: asan tests
-      run: pixi run -e asan test_mojo_asan --no-gpu --no-python
+      run: pixi run -e asan test_mojo_asan_parallel --no-gpu --no-python
+
+  asan-macos-arm64:
+    name: asan (macos, arm64)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      MODULAR_HOME: "/Users/runner/.modular"
+      FORCE_COLOR: "1"
+      PYTEST_ADDOPTS: "--color=yes"
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v2
+    - uses: prefix-dev/setup-pixi@v0.9.4
+      with:
+        cache: true
+        cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+        frozen: true
+        environments: asan
+    - uses: actions/cache@v4
+      with:
+        path: .pixi/envs/asan/**/.mojo_cache
+        key: mojo-cache-asan-${{ runner.os }}-${{ hashFiles('pixi.lock', '**/*.mojo') }}
+        restore-keys: mojo-cache-asan-${{ runner.os }}-
+    - name: asan tests
+      run: pixi run -e asan test_mojo_asan_parallel --no-gpu --no-python
