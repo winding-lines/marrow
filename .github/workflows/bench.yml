@@ -54,15 +54,16 @@ jobs:
           --save-benchmarks results
           --benchmark-history gh-pages-out/benchmarks/data.json
 
-      - name: Publish dashboard
+      - name: Prepare dashboard
         if: github.ref == 'refs/heads/main'
         run: |
           COMMIT="$(git rev-parse HEAD)"
           mkdir -p gh-pages-out/results
           cp results/${COMMIT}.json gh-pages-out/results/${COMMIT}.json
-          cd gh-pages-out
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add benchmarks/data.json results/
-          git diff --cached --quiet || git commit -m "perf: update benchmark dashboard [skip ci]"
-          git push origin gh-pages
+
+      - uses: peaceiris/actions-gh-pages@v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./gh-pages-out
+          keep_files: true
