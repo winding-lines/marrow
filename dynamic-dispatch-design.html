@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.8.27">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>dynamic-dispatch-design – Marrow</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-8b4baf804e461d9b72633f0de59a0cac.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-7aa4c7b3796345b174ec3606a54e4e58.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="./index.html" class="navbar-brand navbar-brand-logo">
+    <img src="./../logo.png" alt="marrow" class="navbar-logo light-content">
+    <img src="./../logo.png" alt="marrow" class="navbar-logo dark-content">
+    </a>
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">Marrow</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="./index.html"> 
+<span class="menu-text">Quickstart</span></a>
+  </li>  
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-guides" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Guides</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-guides">    
+        <li>
+    <a class="dropdown-item" href="./guide/arrays.html">
+ <span class="dropdown-text">Arrays</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./guide/compute.html">
+ <span class="dropdown-text">Compute</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./guide/expressions.html">
+ <span class="dropdown-text">Expressions</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./guide/types.html">
+ <span class="dropdown-text">Type System</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./guide/interop.html">
+ <span class="dropdown-text">PyArrow Interop</span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-examples" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Examples</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-examples">    
+        <li>
+    <a class="dropdown-item" href="./examples/datafusion.html">
+ <span class="dropdown-text">DataFusion UDFs</span></a>
+  </li>  
+    </ul>
+  </li>
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="./benchmarks/"> 
+<span class="menu-text">Benchmarks</span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/kszucs/marrow"> <i class="bi bi-github" role="img">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#dynamic-dispatch-design-for-marrow" id="toc-dynamic-dispatch-design-for-marrow" class="nav-link active" data-scroll-target="#dynamic-dispatch-design-for-marrow">Dynamic Dispatch Design for Marrow</a>
+  <ul class="collapse">
+  <li><a href="#problem" id="toc-problem" class="nav-link" data-scroll-target="#problem">Problem</a></li>
+  <li><a href="#mechanism-function-pointer-trampolines" id="toc-mechanism-function-pointer-trampolines" class="nav-link" data-scroll-target="#mechanism-function-pointer-trampolines">Mechanism: Function-Pointer Trampolines</a>
+  <ul class="collapse">
+  <li><a href="#copying" id="toc-copying" class="nav-link" data-scroll-target="#copying">Copying</a></li>
+  <li><a href="#destruction" id="toc-destruction" class="nav-link" data-scroll-target="#destruction">Destruction</a></li>
+  <li><a href="#downcasting" id="toc-downcasting" class="nav-link" data-scroll-target="#downcasting">Downcasting</a></li>
+  </ul></li>
+  <li><a href="#virtual-method-surfaces" id="toc-virtual-method-surfaces" class="nav-link" data-scroll-target="#virtual-method-surfaces">Virtual Method Surfaces</a>
+  <ul class="collapse">
+  <li><a href="#anyarray" id="toc-anyarray" class="nav-link" data-scroll-target="#anyarray">AnyArray</a></li>
+  <li><a href="#anybuilder" id="toc-anybuilder" class="nav-link" data-scroll-target="#anybuilder">AnyBuilder</a></li>
+  <li><a href="#anyconverter-python-arrow" id="toc-anyconverter-python-arrow" class="nav-link" data-scroll-target="#anyconverter-python-arrow">AnyConverter (Python → Arrow)</a></li>
+  </ul></li>
+  <li><a href="#type-relationships" id="toc-type-relationships" class="nav-link" data-scroll-target="#type-relationships">Type Relationships</a></li>
+  <li><a href="#design-decisions" id="toc-design-decisions" class="nav-link" data-scroll-target="#design-decisions">Design Decisions</a></li>
+  <li><a href="#prototype-status" id="toc-prototype-status" class="nav-link" data-scroll-target="#prototype-status">Prototype Status</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"></header>
+
+
+
+
+<section id="dynamic-dispatch-design-for-marrow" class="level1">
+<h1>Dynamic Dispatch Design for Marrow</h1>
+<section id="problem" class="level2">
+<h2 class="anchored" data-anchor-id="problem">Problem</h2>
+<p>Mojo lacks runtime polymorphism (no virtual methods, no trait objects). Marrow needs type-erased containers (<code>AnyArray</code>, <code>AnyBuilder</code>, <code>AnyConverter</code>) that dispatch to concrete typed implementations at runtime — e.g.&nbsp;holding <code>PrimitiveArray[int32]</code>, <code>ListArray</code>, and <code>StructArray</code> in a single <code>List[AnyArray]</code>.</p>
+</section>
+<section id="mechanism-function-pointer-trampolines" class="level2">
+<h2 class="anchored" data-anchor-id="mechanism-function-pointer-trampolines">Mechanism: Function-Pointer Trampolines</h2>
+<p>Each type-erased container (<code>Any*</code>) stores:</p>
+<ol type="1">
+<li><strong><code>ArcPointer[NoneType]</code></strong> — the typed value on the heap, erased to <code>NoneType</code></li>
+<li><strong>Function pointers</strong> — one per virtual method slot, capturing the concrete type</li>
+<li><strong>A drop trampoline</strong> — for correct typed destruction</li>
+</ol>
+<pre><code>┌─────────────────────────────────────┐
+│ AnyArray                            │
+│                                     │
+│  _data: ArcPointer[NoneType] ──────────► heap: ArcInner&lt;PrimitiveArray[int64]&gt;
+│  _virt_length:    fn(ptr) -&gt; Int    │         { refcount, value }
+│  _virt_null_count: fn(ptr) -&gt; Int   │
+│  _virt_is_valid:  fn(ptr,Int)-&gt;Bool │
+│  _virt_drop:      fn(var ptr)       │
+└─────────────────────────────────────┘</code></pre>
+<p><strong>Trampolines</strong> are <code>@staticmethod</code> functions parameterized on <code>T: Array</code> that <code>rebind</code> the erased pointer back to the concrete type and forward the call:</p>
+<pre class="mojo"><code>@staticmethod
+fn _tramp_length[T: Array](ptr: ArcPointer[NoneType]) -&gt; Int:
+    return rebind[ArcPointer[T]](ptr)[].length()</code></pre>
+<p>At construction time, the concrete type <code>T</code> is captured into the function pointers:</p>
+<pre class="mojo"><code>@implicit
+fn __init__[T: Array](out self, var value: T):
+    var ptr = ArcPointer(value^)
+    self._data = rebind[ArcPointer[NoneType]](ptr^)
+    self._virt_length = Self._tramp_length[T]
+    # ...</code></pre>
+<section id="copying" class="level3">
+<h3 class="anchored" data-anchor-id="copying">Copying</h3>
+<p>Copies are O(1) ref-count bumps via <code>ArcPointer.copy()</code>. The function pointers are copied verbatim — they encode the concrete type, not the instance.</p>
+</section>
+<section id="destruction" class="level3">
+<h3 class="anchored" data-anchor-id="destruction">Destruction</h3>
+<p>A dedicated <code>_virt_drop</code> trampoline rebinds and drops as the correct type:</p>
+<pre class="mojo"><code>@staticmethod
+fn _tramp_drop[T: Array](var ptr: ArcPointer[NoneType]):
+    var typed = rebind[ArcPointer[T]](ptr^)
+    _ = typed^  # drop with correct destructor</code></pre>
+<p><code>__del__</code> uses <code>deinit self</code> (not <code>var self</code>) to move <code>_data</code> out for the drop trampoline.</p>
+</section>
+<section id="downcasting" class="level3">
+<h3 class="anchored" data-anchor-id="downcasting">Downcasting</h3>
+<p><code>downcast[T]()</code> returns <code>ArcPointer[T]</code> with a bumped refcount. The caller must ensure the type matches (no runtime check). The returned handle keeps data alive independently of the <code>AnyArray</code>:</p>
+<pre class="mojo"><code>fn downcast[T: Array](self) -&gt; ArcPointer[T]:
+    return rebind[ArcPointer[T]](self._data.copy())</code></pre>
+</section>
+</section>
+<section id="virtual-method-surfaces" class="level2">
+<h2 class="anchored" data-anchor-id="virtual-method-surfaces">Virtual Method Surfaces</h2>
+<p>Based on analysis of the Arrow C++ codebase (<code>libarrow</code>), these are the dynamic methods each type-erased container needs.</p>
+<section id="anyarray" class="level3">
+<h3 class="anchored" data-anchor-id="anyarray">AnyArray</h3>
+<p>Arrow’s C++ <code>Array</code> has only a virtual destructor. All other methods operate on the flat <code>ArrayData</code> struct and dispatch via the Visitor pattern externally. We adopt a similar minimal surface:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>Signature</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>length</code></td>
+<td><code>(self) -&gt; Int</code></td>
+<td>Array length</td>
+</tr>
+<tr class="even">
+<td><code>null_count</code></td>
+<td><code>(self) -&gt; Int</code></td>
+<td>Cached null count</td>
+</tr>
+<tr class="odd">
+<td><code>is_valid</code></td>
+<td><code>(self, Int) -&gt; Bool</code></td>
+<td>Validity bitmap check</td>
+</tr>
+<tr class="even">
+<td><code>type</code></td>
+<td><code>(self) -&gt; DataType</code></td>
+<td>Runtime type introspection</td>
+</tr>
+<tr class="odd">
+<td><code>n_children</code></td>
+<td><code>(self) -&gt; Int</code></td>
+<td>Number of child arrays</td>
+</tr>
+<tr class="even">
+<td><code>child</code></td>
+<td><code>(self, Int) -&gt; AnyArray</code></td>
+<td>Access child by index</td>
+</tr>
+<tr class="odd">
+<td><code>n_buffers</code></td>
+<td><code>(self) -&gt; Int</code></td>
+<td>Number of buffers</td>
+</tr>
+<tr class="even">
+<td><code>slice</code></td>
+<td><code>(self, Int, Int) -&gt; AnyArray</code></td>
+<td>Zero-copy slice</td>
+</tr>
+</tbody>
+</table>
+<p>The trait that typed arrays implement:</p>
+<pre class="mojo"><code>trait Array(Movable, ImplicitlyDestructible):
+    fn length(self) -&gt; Int: ...
+    fn null_count(self) -&gt; Int: ...
+    fn is_valid(self, index: Int) -&gt; Bool: ...
+    fn type(self) -&gt; DataType: ...
+    fn n_children(self) -&gt; Int: ...
+    fn child(self, index: Int) -&gt; AnyArray: ...
+    fn n_buffers(self) -&gt; Int: ...
+    fn slice(self, offset: Int, length: Int) -&gt; AnyArray: ...</code></pre>
+<p>Typed arrays: <code>PrimitiveArray[T: DataType]</code>, <code>ListArray</code>, <code>StructArray</code>, <code>StringArray</code>, <code>FixedSizeListArray</code>.</p>
+</section>
+<section id="anybuilder" class="level3">
+<h3 class="anchored" data-anchor-id="anybuilder">AnyBuilder</h3>
+<p>Arrow’s <code>ArrayBuilder</code> has 6 pure virtual methods — the richest virtual surface of the three hierarchies. Builders are inherently polymorphic because composite builders (struct, list) hold child builders whose types are determined at runtime.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 30%">
+<col style="width: 42%">
+<col style="width: 26%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>Signature</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>append_null</code></td>
+<td><code>(mut self)</code></td>
+<td>Append a null</td>
+</tr>
+<tr class="even">
+<td><code>append_nulls</code></td>
+<td><code>(mut self, Int)</code></td>
+<td>Append n nulls</td>
+</tr>
+<tr class="odd">
+<td><code>append_empty_value</code></td>
+<td><code>(mut self)</code></td>
+<td>Append zero-initialized non-null</td>
+</tr>
+<tr class="even">
+<td><code>append_empty_values</code></td>
+<td><code>(mut self, Int)</code></td>
+<td>Append n empty values</td>
+</tr>
+<tr class="odd">
+<td><code>finish</code></td>
+<td><code>(mut self) -&gt; AnyArray</code></td>
+<td>Produce the array</td>
+</tr>
+<tr class="even">
+<td><code>type</code></td>
+<td><code>(self) -&gt; DataType</code></td>
+<td>Builder’s target type</td>
+</tr>
+<tr class="odd">
+<td><code>length</code></td>
+<td><code>(self) -&gt; Int</code></td>
+<td>Current length</td>
+</tr>
+<tr class="even">
+<td><code>null_count</code></td>
+<td><code>(self) -&gt; Int</code></td>
+<td>Current null count</td>
+</tr>
+<tr class="odd">
+<td><code>resize</code></td>
+<td><code>(mut self, Int)</code></td>
+<td>Resize capacity</td>
+</tr>
+<tr class="even">
+<td><code>reset</code></td>
+<td><code>(mut self)</code></td>
+<td>Reset to empty</td>
+</tr>
+<tr class="odd">
+<td><code>append_scalar</code></td>
+<td><code>(mut self, Scalar)</code></td>
+<td>Type-erased value append</td>
+</tr>
+<tr class="even">
+<td><code>append_array_slice</code></td>
+<td><code>(mut self, AnyArray, Int, Int)</code></td>
+<td>Append from existing array</td>
+</tr>
+</tbody>
+</table>
+<p>The trait:</p>
+<pre class="mojo"><code>trait Builder(Movable, ImplicitlyDestructible):
+    fn append_null(mut self) raises: ...
+    fn append_nulls(mut self, n: Int) raises: ...
+    fn append_empty_value(mut self) raises: ...
+    fn append_empty_values(mut self, n: Int) raises: ...
+    fn finish(mut self) raises -&gt; AnyArray: ...
+    fn type(self) -&gt; DataType: ...
+    fn length(self) -&gt; Int: ...
+    fn null_count(self) -&gt; Int: ...
+    fn resize(mut self, capacity: Int) raises: ...
+    fn reset(mut self): ...</code></pre>
+<p>Typed builders: <code>PrimitiveBuilder[T: DataType]</code>, <code>ListBuilder</code>, <code>StructBuilder</code>, <code>StringBuilder</code>, <code>FixedSizeListBuilder</code>.</p>
+</section>
+<section id="anyconverter-python-arrow" class="level3">
+<h3 class="anchored" data-anchor-id="anyconverter-python-arrow">AnyConverter (Python → Arrow)</h3>
+<p>Arrow’s <code>Converter</code> base class handles Python object → Arrow array conversion. The virtual surface is small because most type-specific logic lives in the <code>Append</code> override:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 30%">
+<col style="width: 42%">
+<col style="width: 26%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>Signature</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>append</code></td>
+<td><code>(mut self, PythonObject) raises</code></td>
+<td>Convert + append one value</td>
+</tr>
+<tr class="even">
+<td><code>extend</code></td>
+<td><code>(mut self, PythonObject, Int) raises</code></td>
+<td>Convert a sequence</td>
+</tr>
+<tr class="odd">
+<td><code>finish</code></td>
+<td><code>(mut self) raises -&gt; AnyArray</code></td>
+<td>Produce the array</td>
+</tr>
+<tr class="even">
+<td><code>type</code></td>
+<td><code>(self) -&gt; DataType</code></td>
+<td>Target type</td>
+</tr>
+<tr class="odd">
+<td><code>reserve</code></td>
+<td><code>(mut self, Int) raises</code></td>
+<td>Pre-allocate</td>
+</tr>
+<tr class="even">
+<td><code>reset</code></td>
+<td><code>(mut self)</code></td>
+<td>Reset to empty</td>
+</tr>
+</tbody>
+</table>
+<p>The trait:</p>
+<pre class="mojo"><code>trait Converter(Movable, ImplicitlyDestructible):
+    fn append(mut self, value: PythonObject) raises: ...
+    fn extend(mut self, values: PythonObject, size: Int) raises: ...
+    fn finish(mut self) raises -&gt; AnyArray: ...
+    fn type(self) -&gt; DataType: ...
+    fn reserve(mut self, capacity: Int) raises: ...
+    fn reset(mut self): ...</code></pre>
+<p>Typed converters: <code>PrimitiveConverter[T: DataType]</code>, <code>ListConverter</code>, <code>StructConverter</code>, <code>StringConverter</code>.</p>
+<p>Arrow uses <code>MakeConverter(DataType) -&gt; Converter</code> as a factory that switches on the type code. We would use the same pattern via <code>DataTypeVisitor</code>.</p>
+</section>
+</section>
+<section id="type-relationships" class="level2">
+<h2 class="anchored" data-anchor-id="type-relationships">Type Relationships</h2>
+<pre><code>trait Array ──────────────► AnyArray (type-erased, fn-ptr vtable)
+  │  PrimitiveArray[T]         │  .downcast[T]() -&gt; ArcPointer[T]
+  │  ListArray                 │  .length(), .null_count(), .is_valid()
+  │  StructArray               │  .type(), .child(), .slice()
+  │  StringArray               │
+  │  FixedSizeListArray        │
+
+trait Builder ────────────► AnyBuilder (type-erased, fn-ptr vtable)
+  │  PrimitiveBuilder[T]       │  .downcast[T]() -&gt; ArcPointer[T]
+  │  ListBuilder               │  .append_null(), .finish(), .type()
+  │  StructBuilder             │  .append_scalar(), .append_array_slice()
+  │  StringBuilder             │
+  │  FixedSizeListBuilder      │
+
+trait Converter ──────────► AnyConverter (type-erased, fn-ptr vtable)
+  │  PrimitiveConverter[T]     │  .downcast[T]() -&gt; ArcPointer[T]
+  │  ListConverter             │  .append(), .extend(), .finish()
+  │  StructConverter           │
+  │  StringConverter           │</code></pre>
+<p>All three <code>Any*</code> types follow the same structural pattern: - <code>ArcPointer[NoneType]</code> for heap storage - Function pointers for each virtual method - <code>@implicit __init__[T: Trait]</code> for type erasure - <code>__copyinit__</code> with <code>.copy()</code> for O(1) ref-count bumps - <code>__del__(deinit self)</code> with typed drop trampoline - <code>downcast[T]() -&gt; ArcPointer[T]</code> for recovery</p>
+</section>
+<section id="design-decisions" class="level2">
+<h2 class="anchored" data-anchor-id="design-decisions">Design Decisions</h2>
+<p><strong>Why function pointers over Variant?</strong> Variant requires enumerating all types upfront and grows linearly with type count. Function pointers are open — any type conforming to the trait can be erased without modifying the container. This is critical for <code>PrimitiveArray[T]</code> where <code>T</code> can be any <code>DataType</code>.</p>
+<p><strong>Why <code>ArcPointer[NoneType]</code> + <code>rebind</code>?</strong> Mojo’s <code>ArcPointer[T]</code> has uniform layout regardless of <code>T</code> (it stores a pointer to a heap block). <code>rebind</code> reinterprets the bits without copying or allocating. This gives us type erasure with zero overhead beyond the function pointer call.</p>
+<p><strong>Why <code>deinit self</code> in <code>__del__</code>?</strong> Mojo requires <code>deinit</code> (not <code>var</code>) to move fields out of self during destruction. <code>var self</code> causes “field destroyed out of the middle of a value” errors.</p>
+<p><strong>Why <code>ImplicitlyCopyable</code> on <code>AnyArray</code> but not on the <code>Array</code> trait?</strong> <code>AnyArray</code> needs <code>ImplicitlyCopyable</code> to be stored in <code>List[AnyArray]</code>. The trait doesn’t require it because concrete types like <code>ListArray</code> contain <code>List</code> fields which aren’t <code>ImplicitlyCopyable</code>. The <code>AnyArray</code> wrapper adds copyability through <code>ArcPointer</code> ref-counting.</p>
+<p><strong>Why a generic <code>downcast[T]</code> instead of <code>as_primitive[T]</code>, <code>as_list()</code>, etc.?</strong> <code>AnyArray</code> is defined before the concrete types (it only depends on the <code>Array</code> trait). Adding methods that return concrete types would create circular references. A generic <code>downcast[T: Array]</code> avoids this by using the trait bound.</p>
+</section>
+<section id="prototype-status" class="level2">
+<h2 class="anchored" data-anchor-id="prototype-status">Prototype Status</h2>
+<p>The current prototype in <code>marrow/dyn.mojo</code> implements <code>AnyArray</code> with 3 virtual methods (<code>length</code>, <code>null_count</code>, <code>is_valid</code>) plus typed destruction. Tests cover all array types, heterogeneous lists, nested structures, copy semantics, refcount safety, and upcast/downcast round-trips.</p>
+<p>Next steps: - Expand <code>Array</code> trait with <code>type()</code>, <code>child()</code>, <code>slice()</code> - Implement <code>AnyBuilder</code> with the same pattern - Implement <code>AnyConverter</code> for Python interop - Replace the existing <code>Array</code>/<code>Builder</code> types in <code>marrow/arrays.mojo</code> and <code>marrow/builders.mojo</code> with this pattern</p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
