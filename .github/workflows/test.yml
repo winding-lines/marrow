@@ -17,14 +17,14 @@ jobs:
       PYTEST_ADDOPTS: "--color=yes"
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v2
+      uses: actions/checkout@v6
     - uses: prefix-dev/setup-pixi@v0.9.4
       with:
         cache: true
         cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
         frozen: true
         environments: dev
-    - uses: actions/cache@v4
+    - uses: actions/cache@v5
       with:
         path: .pixi/envs/dev/**/.mojo_cache
         key: mojo-cache-dev-${{ runner.os }}-${{ hashFiles('pixi.lock', '**/*.mojo') }}
@@ -43,14 +43,14 @@ jobs:
       PYTEST_ADDOPTS: "--color=yes"
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v2
+      uses: actions/checkout@v6
     - uses: prefix-dev/setup-pixi@v0.9.4
       with:
         cache: true
         cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
         frozen: true
         environments: dev
-    - uses: actions/cache@v4
+    - uses: actions/cache@v5
       with:
         path: .pixi/envs/dev/**/.mojo_cache
         key: mojo-cache-dev-${{ runner.os }}-${{ hashFiles('pixi.lock', '**/*.mojo') }}
@@ -72,14 +72,14 @@ jobs:
       PYTEST_ADDOPTS: "--color=yes"
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v2
+      uses: actions/checkout@v6
     - uses: prefix-dev/setup-pixi@v0.9.4
       with:
         cache: true
         cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
         frozen: true
         environments: asan
-    - uses: actions/cache@v4
+    - uses: actions/cache@v5
       with:
         path: .pixi/envs/asan/**/.mojo_cache
         key: mojo-cache-asan-${{ runner.os }}-${{ hashFiles('pixi.lock', '**/*.mojo') }}
@@ -97,14 +97,14 @@ jobs:
       PYTEST_ADDOPTS: "--color=yes"
     steps:
     - name: Checkout repo
-      uses: actions/checkout@v2
+      uses: actions/checkout@v6
     - uses: prefix-dev/setup-pixi@v0.9.4
       with:
         cache: true
         cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
         frozen: true
         environments: asan
-    - uses: actions/cache@v4
+    - uses: actions/cache@v5
       with:
         path: .pixi/envs/asan/**/.mojo_cache
         key: mojo-cache-asan-${{ runner.os }}-${{ hashFiles('pixi.lock', '**/*.mojo') }}
