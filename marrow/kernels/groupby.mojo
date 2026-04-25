@@ -125,6 +125,44 @@ def _read_as_float64(col: AnyArray, row: Int) raises -> Float64:
     raise Error("unsupported dtype for aggregation: ", col.dtype())
 
 
+def _add_batch_typed_int[
+    T: PrimitiveType
+](
+    name: String,
+    mut val_ptr: Int64Builder,
+    mut cnt_ptr: Int64Builder,
+    group_ids: UInt32Array,
+    input_col: AnyArray,
+    has_bitmap: Bool,
+) raises:
+    """Type-specialized inner loop for integer sum/min/max (int64 accumulator).
+
+    Resolves the typed array once before the loop to avoid per-row dtype
+    dispatch and enable SIMD vectorization.
+    """
+    var n = len(group_ids)
+    ref arr = input_col.as_primitive[T]()
+    for i in range(n):
+        if has_bitmap and not input_col.is_valid(i):
+            continue
+        var g = Int(group_ids.unsafe_get(i))
+        var cnt = Int(cnt_ptr.unsafe_get(g))
+        if name == "count":
+            cnt_ptr.unsafe_set(g, Scalar[int64.native](cnt + 1))
+            continue
+        var val = Scalar[int64.native](arr.unsafe_get(i))
+        var cur = val_ptr.unsafe_get(g)
+        if name == "sum":
+            val_ptr.unsafe_set(g, cur + val)
+        elif name == "min":
+            if cnt == 0 or val < cur:
+                val_ptr.unsafe_set(g, val)
+        elif name == "max":
+            if cnt == 0 or val > cur:
+                val_ptr.unsafe_set(g, val)
+        cnt_ptr.unsafe_set(g, Scalar[int64.native](cnt + 1))
+
+
 def _add_batch_typed[
     T: PrimitiveType
 ](
@@ -135,10 +173,10 @@ def _add_batch_typed[
     input_col: AnyArray,
     has_bitmap: Bool,
 ) raises:
-    """Type-specialized inner loop for add_batch.
+    """Type-specialized inner loop for float/mean-path aggregation.
 
-    Resolves the typed array once, then iterates without per-row dtype
-    dispatch.
+    Resolves the typed array once before the loop to avoid per-row dtype
+    dispatch and enable SIMD vectorization.
     """
     var n = len(group_ids)
     ref arr = input_col.as_primitive[T]()
@@ -208,17 +246,27 @@ struct AggregateFunction(Copyable, Movable):
     """
 
     var name: String
-    var values: AggregateState  # per-group running value (float64)
+    var values: AggregateState  # per-group running value (int64 or float64)
     var counts: AggregateState  # per-group valid count (int64)
+    var _value_dtype: AnyDataType
 
-    def __init__(out self, name: String):
+    def __init__(out self, name: String, var value_dtype: AnyDataType):
         self.name = name
-        self.values = Float64Builder()
+        var is_int = value_dtype.is_integer() and name != "mean"
+        self._value_dtype = value_dtype^
+        if is_int:
+            self.values = Int64Builder()
+        else:
+            self.values = Float64Builder()
         self.counts = Int64Builder()
 
     def __init__(out self, *, copy: Self):
         self.name = copy.name
-        self.values = Float64Builder()
+        self._value_dtype = copy._value_dtype.copy()
+        if copy._value_dtype.is_integer() and copy.name != "mean":
+            self.values = Int64Builder()
+        else:
+            self.values = Float64Builder()
         self.counts = Int64Builder()
 
     def num_groups(self) -> Int:
@@ -226,9 +274,14 @@ struct AggregateFunction(Copyable, Movable):
 
     def create(mut self) raises:
         """Initialize state for a newly created group."""
-        self.values.builder.as_primitive[Float64Type]().append(
-            Scalar[float64.native](0)
-        )
+        if self._value_dtype.is_integer() and self.name != "mean":
+            self.values.builder.as_primitive[Int64Type]().append(
+                Scalar[int64.native](0)
+            )
+        else:
+            self.values.builder.as_primitive[Float64Type]().append(
+                Scalar[float64.native](0)
+            )
         self.counts.builder.as_primitive[Int64Type]().append(
             Scalar[int64.native](0)
         )
@@ -241,64 +294,203 @@ struct AggregateFunction(Copyable, Movable):
         """Scatter-update: single O(N) pass over the batch.
 
         Dtype is resolved once before the loop and dispatched to a
-        type-specialized helper, avoiding per-row Variant construction
-        and comparison overhead.
+        type-specialized helper, avoiding per-row dtype dispatch overhead.
+        Integer types (sum/min/max) use an int64 accumulator; all other
+        types use a float64 accumulator.
         """
         var has_bitmap = input_col.null_count() > 0
-        ref val_ptr = self.values.builder.as_primitive[Float64Type]()
+        var use_int = self._value_dtype.is_integer() and self.name != "mean"
         ref cnt_ptr = self.counts.builder.as_primitive[Int64Type]()
         var dt = input_col.dtype()
 
-        if dt == bool_:
-            _add_batch_bool(
-                self.name, val_ptr, cnt_ptr, group_ids, input_col, has_bitmap
-            )
-        elif dt == int8:
-            _add_batch_typed[Int8Type](
-                self.name, val_ptr, cnt_ptr, group_ids, input_col, has_bitmap
-            )
-        elif dt == int16:
-            _add_batch_typed[Int16Type](
-                self.name, val_ptr, cnt_ptr, group_ids, input_col, has_bitmap
-            )
-        elif dt == int32:
-            _add_batch_typed[Int32Type](
-                self.name, val_ptr, cnt_ptr, group_ids, input_col, has_bitmap
-            )
-        elif dt == int64:
-            _add_batch_typed[Int64Type](
-                self.name, val_ptr, cnt_ptr, group_ids, input_col, has_bitmap
-            )
-        elif dt == uint8:
-            _add_batch_typed[UInt8Type](
-                self.name, val_ptr, cnt_ptr, group_ids, input_col, has_bitmap
-            )
-        elif dt == uint16:
-            _add_batch_typed[UInt16Type](
-                self.name, val_ptr, cnt_ptr, group_ids, input_col, has_bitmap
-            )
-        elif dt == uint32:
-            _add_batch_typed[UInt32Type](
-                self.name, val_ptr, cnt_ptr, group_ids, input_col, has_bitmap
-            )
-        elif dt == uint64:
-            _add_batch_typed[UInt64Type](
-                self.name, val_ptr, cnt_ptr, group_ids, input_col, has_bitmap
-            )
-        elif dt == float16:
-            _add_batch_typed[Float16Type](
-                self.name, val_ptr, cnt_ptr, group_ids, input_col, has_bitmap
-            )
-        elif dt == float32:
-            _add_batch_typed[Float32Type](
-                self.name, val_ptr, cnt_ptr, group_ids, input_col, has_bitmap
-            )
-        elif dt == float64:
-            _add_batch_typed[Float64Type](
-                self.name, val_ptr, cnt_ptr, group_ids, input_col, has_bitmap
-            )
+        if use_int:
+            ref int_ptr = self.values.builder.as_primitive[Int64Type]()
+            if dt == int8:
+                _add_batch_typed_int[Int8Type](
+                    self.name,
+                    int_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == int16:
+                _add_batch_typed_int[Int16Type](
+                    self.name,
+                    int_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == int32:
+                _add_batch_typed_int[Int32Type](
+                    self.name,
+                    int_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == int64:
+                _add_batch_typed_int[Int64Type](
+                    self.name,
+                    int_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == uint8:
+                _add_batch_typed_int[UInt8Type](
+                    self.name,
+                    int_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == uint16:
+                _add_batch_typed_int[UInt16Type](
+                    self.name,
+                    int_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == uint32:
+                _add_batch_typed_int[UInt32Type](
+                    self.name,
+                    int_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == uint64:
+                _add_batch_typed_int[UInt64Type](
+                    self.name,
+                    int_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            else:
+                raise Error("unsupported integer dtype: ", dt)
         else:
-            raise Error("unsupported dtype for aggregation: ", dt)
+            ref val_ptr = self.values.builder.as_primitive[Float64Type]()
+            if dt == bool_:
+                _add_batch_bool(
+                    self.name,
+                    val_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == int8:
+                _add_batch_typed[Int8Type](
+                    self.name,
+                    val_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == int16:
+                _add_batch_typed[Int16Type](
+                    self.name,
+                    val_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == int32:
+                _add_batch_typed[Int32Type](
+                    self.name,
+                    val_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == int64:
+                _add_batch_typed[Int64Type](
+                    self.name,
+                    val_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == uint8:
+                _add_batch_typed[UInt8Type](
+                    self.name,
+                    val_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == uint16:
+                _add_batch_typed[UInt16Type](
+                    self.name,
+                    val_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == uint32:
+                _add_batch_typed[UInt32Type](
+                    self.name,
+                    val_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == uint64:
+                _add_batch_typed[UInt64Type](
+                    self.name,
+                    val_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == float16:
+                _add_batch_typed[Float16Type](
+                    self.name,
+                    val_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == float32:
+                _add_batch_typed[Float32Type](
+                    self.name,
+                    val_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            elif dt == float64:
+                _add_batch_typed[Float64Type](
+                    self.name,
+                    val_ptr,
+                    cnt_ptr,
+                    group_ids,
+                    input_col,
+                    has_bitmap,
+                )
+            else:
+                raise Error("unsupported dtype for aggregation: ", dt)
 
     def finish(
         mut self, col_name: String, num_groups: Int
@@ -327,20 +519,33 @@ struct AggregateFunction(Copyable, Movable):
                 b.finish().to_any(),
             )
 
-        # sum, min, max — emit value if count > 0, else null.
-        var b = Float64Builder(capacity=num_groups)
-        ref val_ptr = self.values.builder.as_primitive[Float64Type]()
         ref cnt_ptr = self.counts.builder.as_primitive[Int64Type]()
-        for g in range(num_groups):
-            var c = Int(cnt_ptr.unsafe_get(g))
-            if c > 0:
-                b.append(val_ptr.unsafe_get(g))
-            else:
-                b.append_null()
-        return (
-            Field(col_name, AnyDataType(float64)),
-            b.finish().to_any(),
-        )
+        if self._value_dtype.is_integer():
+            var b = PrimitiveBuilder[Int64Type](capacity=num_groups)
+            ref int_ptr = self.values.builder.as_primitive[Int64Type]()
+            for g in range(num_groups):
+                var c = Int(cnt_ptr.unsafe_get(g))
+                if c > 0:
+                    b.append(int_ptr.unsafe_get(g))
+                else:
+                    b.append_null()
+            return (
+                Field(col_name, AnyDataType(int64)),
+                b.finish().to_any(),
+            )
+        else:
+            var b = PrimitiveBuilder[Float64Type](capacity=num_groups)
+            ref val_ptr = self.values.builder.as_primitive[Float64Type]()
+            for g in range(num_groups):
+                var c = Int(cnt_ptr.unsafe_get(g))
+                if c > 0:
+                    b.append(val_ptr.unsafe_get(g))
+                else:
+                    b.append_null()
+            return (
+                Field(col_name, AnyDataType(float64)),
+                b.finish().to_any(),
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -376,12 +581,16 @@ struct HashGrouper(Movable):
     var _group_keys: List[AnyArray]
     var _functions: List[AggregateFunction]
 
-    def __init__(out self, agg_names: List[String]):
+    def __init__(
+        out self, agg_names: List[String], value_dtypes: List[AnyDataType]
+    ):
         self._table = SwissHashTable[rapidhash]()
         self._group_keys = List[AnyArray]()
         self._functions = List[AggregateFunction]()
         for i in range(len(agg_names)):
-            self._functions.append(AggregateFunction(agg_names[i]))
+            self._functions.append(
+                AggregateFunction(agg_names[i], value_dtypes[i].copy())
+            )
 
     def num_groups(self) -> Int:
         return self._table.num_keys()
@@ -506,7 +715,11 @@ def groupby(
     if len(values) != len(aggregations):
         raise Error("groupby: len(values) != len(aggregations)")
 
-    var grouper = HashGrouper(aggregations)
+    var value_dtypes = List[AnyDataType]()
+    for i in range(len(values)):
+        value_dtypes.append(values[i].dtype())
+
+    var grouper = HashGrouper(aggregations, value_dtypes^)
     grouper.consume(keys, values)
 
     var key_fields = List[Field]()

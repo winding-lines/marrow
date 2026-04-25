@@ -53,6 +53,7 @@ from marrow.dtypes import (
     Float16Type,
     Float32Type,
     Float64Type,
+    AnyDataType,
     int8,
     int16,
     int32,
@@ -1003,11 +1004,19 @@ struct Planner:
             for i in range(len(arc[].keys)):
                 key_fields.append(arc[].schema().fields[i].copy())
 
+            var value_dtypes = List[AnyDataType]()
+            for i in range(len(arc[].agg_exprs)):
+                var dt = arc[].agg_exprs[i].dtype()
+                if dt:
+                    value_dtypes.append(dt.value().copy())
+                else:
+                    value_dtypes.append(AnyDataType(float64))
+
             return AggregateProcessor(
                 child=child^,
                 key_exprs=key_exprs^,
                 value_exprs=value_exprs^,
-                grouper=HashGrouper(arc[].agg_funcs),
+                grouper=HashGrouper(arc[].agg_funcs, value_dtypes^),
                 schema_=arc[].schema(),
                 key_fields=key_fields^,
             )

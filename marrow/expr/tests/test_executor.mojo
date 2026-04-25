@@ -7,7 +7,13 @@ from std.os import remove
 
 from marrow.arrays import AnyArray, BoolArray
 from marrow.builders import array
-from marrow.dtypes import int64, float64, bool_ as bool_dt, Int64Type
+from marrow.dtypes import (
+    int64,
+    float64,
+    bool_ as bool_dt,
+    Int64Type,
+    AnyDataType,
+)
 from marrow.tabular import record_batch
 from marrow.expr import (
     AnyValue,
@@ -461,10 +467,10 @@ def test_aggregate_sum() raises:
     assert_equal(k[0], 1)
     assert_equal(k[1], 2)
 
-    # Sum column (float64).
-    ref s = result.columns[1].as_float64()
-    assert_equal(s[0], 90.0)  # 10 + 30 + 50
-    assert_equal(s[1], 60.0)  # 20 + 40
+    # Sum column (int64 — integer input produces integer output).
+    ref s = result.columns[1].as_int64()
+    assert_equal(s[0], 90)  # 10 + 30 + 50
+    assert_equal(s[1], 60)  # 20 + 40
 
 
 def test_aggregate_count() raises:
@@ -484,6 +490,24 @@ def test_aggregate_count() raises:
     assert_equal(c[1], 2)  # key=2: 2 rows
 
 
+def test_aggregate_sum_int64_precision() raises:
+    """Grouped int64 sum via the expression system must stay exact above 2**53.
+    """
+    var cols = List[AnyArray]()
+    cols.append(array[Int64Type]([1, 1]).to_any())
+    cols.append(array[Int64Type]([9_007_199_254_740_993, 1]).to_any())
+    var batch = record_batch(cols^, names=["key", "val"])
+
+    var plan = in_memory_table(batch).aggregate(
+        [col("key")], [col("val")], ["sum"]
+    )
+    var result = execute(plan)
+    assert_equal(result.num_rows(), 1)
+    assert_true(result.schema.fields[1].dtype == AnyDataType(int64))
+    ref s = result.columns[1].as_int64()
+    assert_equal(s[0], 9_007_199_254_740_994)
+
+
 def test_aggregate_small_morsel() raises:
     """Aggregate with small morsel size forces multiple pulls."""
     var cols = List[AnyArray]()
@@ -498,9 +522,9 @@ def test_aggregate_small_morsel() raises:
     ctx.morsel_size = 2
     var result = execute(plan, ctx)
     assert_equal(result.num_rows(), 2)
-    ref s = result.columns[1].as_float64()
-    assert_equal(s[0], 90.0)  # key=1: 10+30+50
-    assert_equal(s[1], 120.0)  # key=2: 20+40+60
+    ref s = result.columns[1].as_int64()
+    assert_equal(s[0], 90)  # key=1: 10+30+50
+    assert_equal(s[1], 120)  # key=2: 20+40+60
 
 
 def main() raises:

@@ -24,6 +24,7 @@ from marrow.dtypes import (
     UInt8Type,
     UInt32Type,
     Float64Type,
+    AnyDataType,
 )
 from marrow.kernels.groupby import groupby
 
@@ -66,11 +67,11 @@ def test_groupby_sum_basic() raises:
     assert_equal(k[1], 2)
     assert_equal(k[2], 3)
 
-    # Sum column (float64).
-    ref s = result.columns[1].as_float64()
-    assert_equal(s[0], 40.0)  # 10 + 30
-    assert_equal(s[1], 70.0)  # 20 + 50
-    assert_equal(s[2], 40.0)  # 40
+    # Sum column (int64 — integer input produces integer output).
+    ref s = result.columns[1].as_int64()
+    assert_equal(s[0], 40)  # 10 + 30
+    assert_equal(s[1], 70)  # 20 + 50
+    assert_equal(s[2], 40)  # 40
 
 
 def test_groupby_sum_all_same_key() raises:
@@ -78,8 +79,8 @@ def test_groupby_sum_all_same_key() raises:
     var vals = AnyArray(array[Int32Type]([1, 2, 3]))
     var result = groupby(keys, _values(vals), _aggs("sum"))
     assert_equal(result.num_rows(), 1)
-    ref s = result.columns[1].as_float64()
-    assert_equal(s[0], 6.0)
+    ref s = result.columns[1].as_int64()
+    assert_equal(s[0], 6)
 
 
 # ---------------------------------------------------------------------------
@@ -91,18 +92,69 @@ def test_groupby_min() raises:
     var keys = AnyArray(array[Int32Type]([1, 2, 1, 2]))
     var vals = AnyArray(array[Int32Type]([30, 10, 20, 40]))
     var result = groupby(keys, _values(vals), _aggs("min"))
-    ref m = result.columns[1].as_float64()
-    assert_equal(m[0], 20.0)  # min(30, 20)
-    assert_equal(m[1], 10.0)  # min(10, 40)
+    ref m = result.columns[1].as_int64()
+    assert_equal(m[0], 20)  # min(30, 20)
+    assert_equal(m[1], 10)  # min(10, 40)
 
 
 def test_groupby_max() raises:
     var keys = AnyArray(array[Int32Type]([1, 2, 1, 2]))
     var vals = AnyArray(array[Int32Type]([30, 10, 20, 40]))
     var result = groupby(keys, _values(vals), _aggs("max"))
-    ref m = result.columns[1].as_float64()
-    assert_equal(m[0], 30.0)  # max(30, 20)
-    assert_equal(m[1], 40.0)  # max(10, 40)
+    ref m = result.columns[1].as_int64()
+    assert_equal(m[0], 30)  # max(30, 20)
+    assert_equal(m[1], 40)  # max(10, 40)
+
+
+def test_groupby_sum_int64_precision() raises:
+    """Sum of int64 values above 2**53 must not lose precision via float64."""
+    var keys = AnyArray(array[Int32Type]([1, 1]))
+    var vals = AnyArray(array[Int64Type]([9_007_199_254_740_993, 1]))
+    var result = groupby(keys, _values(vals), _aggs("sum"))
+    assert_equal(result.num_rows(), 1)
+    assert_true(result.schema.fields[1].dtype == AnyDataType(int64))
+    ref s = result.columns[1].as_int64()
+    assert_equal(s[0], 9_007_199_254_740_994)
+
+
+def test_groupby_min_int64_precision() raises:
+    """Min over int64 values above 2**53 must stay exact."""
+    var keys = AnyArray(array[Int32Type]([1, 1]))
+    var vals = AnyArray(
+        array[Int64Type]([9_007_199_254_740_993, 9_007_199_254_740_995])
+    )
+    var result = groupby(keys, _values(vals), _aggs("min"))
+    assert_true(result.schema.fields[1].dtype == AnyDataType(int64))
+    ref m = result.columns[1].as_int64()
+    assert_equal(m[0], 9_007_199_254_740_993)
+
+
+def test_groupby_max_int64_precision() raises:
+    """Max over int64 values above 2**53 must stay exact."""
+    var keys = AnyArray(array[Int32Type]([1, 1]))
+    var vals = AnyArray(
+        array[Int64Type]([9_007_199_254_740_993, 9_007_199_254_740_995])
+    )
+    var result = groupby(keys, _values(vals), _aggs("max"))
+    assert_true(result.schema.fields[1].dtype == AnyDataType(int64))
+    ref m = result.columns[1].as_int64()
+    assert_equal(m[0], 9_007_199_254_740_995)
+
+
+def test_groupby_sum_uint64_wraps_for_large_values() raises:
+    """uint64 values > Int64.MAX wrap on cast to int64 accumulator.
+
+    The int64 accumulator is correct for uint8/16/32 and uint64 values
+    below 2**63. For uint64 values above 2**63, the cast wraps (matching
+    pandas wrapping-on-overflow semantics), not the float64 rounding of
+    the old implementation.
+    """
+    var keys = AnyArray(array[Int32Type]([1, 1]))
+    var vals = AnyArray(array[UInt8Type]([100, 50]))
+    var result = groupby(keys, _values(vals), _aggs("sum"))
+    assert_true(result.schema.fields[1].dtype == AnyDataType(int64))
+    ref s = result.columns[1].as_primitive[Int64Type]()
+    assert_equal(s[0], 150)  # uint8 values within int64 range sum correctly
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +186,17 @@ def test_groupby_mean() raises:
     assert_equal(m[1], 30.0)  # (20+40)/2
 
 
+def test_groupby_sum_float64_preserved() raises:
+    """Float64 input to sum still produces a float64 result (regression guard).
+    """
+    var keys = AnyArray(array[Int32Type]([1, 1]))
+    var vals = AnyArray(array[Float64Type]([1.5, 2.5]))
+    var result = groupby(keys, _values(vals), _aggs("sum"))
+    assert_true(result.schema.fields[1].dtype == AnyDataType(float64))
+    ref s = result.columns[1].as_primitive[Float64Type]()
+    assert_equal(s[0], 4.0)
+
+
 # ---------------------------------------------------------------------------
 # groupby — null handling
 # ---------------------------------------------------------------------------
@@ -146,10 +209,10 @@ def test_groupby_null_keys() raises:
     var result = groupby(keys, _values(vals), _aggs("sum"))
     assert_equal(result.num_rows(), 3)
     # Group order: 1, null, 2
-    ref s = result.columns[1].as_float64()
-    assert_equal(s[0], 60.0)  # key=1: 10+50
-    assert_equal(s[1], 60.0)  # key=null: 20+40
-    assert_equal(s[2], 30.0)  # key=2: 30
+    ref s = result.columns[1].as_int64()
+    assert_equal(s[0], 60)  # key=1: 10+50
+    assert_equal(s[1], 60)  # key=null: 20+40
+    assert_equal(s[2], 30)  # key=2: 30
 
 
 def test_groupby_null_values_skipped() raises:
@@ -157,8 +220,8 @@ def test_groupby_null_values_skipped() raises:
     var keys = AnyArray(array[Int32Type]([1, 1, 1]))
     var vals = AnyArray(array[Int32Type]([10, None, 30]))
     var result = groupby(keys, _values(vals), _aggs("sum"))
-    ref s = result.columns[1].as_float64()
-    assert_equal(s[0], 40.0)  # 10 + 30 (null skipped)
+    ref s = result.columns[1].as_int64()
+    assert_equal(s[0], 40)  # 10 + 30 (null skipped)
 
 
 def test_groupby_count_skips_nulls() raises:
@@ -185,9 +248,9 @@ def test_groupby_string_key() raises:
     var vals = AnyArray(array[Int32Type]([10, 20, 30, 40]))
     var result = groupby(keys, _values(vals), _aggs("sum"))
     assert_equal(result.num_rows(), 2)
-    ref s = result.columns[1].as_float64()
-    assert_equal(s[0], 40.0)  # "a": 10+30
-    assert_equal(s[1], 60.0)  # "b": 20+40
+    ref s = result.columns[1].as_int64()
+    assert_equal(s[0], 40)  # "a": 10+30
+    assert_equal(s[1], 60)  # "b": 20+40
 
 
 # ---------------------------------------------------------------------------
@@ -238,9 +301,9 @@ def test_groupby_bool_key() raises:
     var vals = AnyArray(array[Int32Type]([1, 2, 3, 4, 5]))
     var result = groupby(keys, _values(vals), _aggs("sum"))
     assert_equal(result.num_rows(), 2)
-    ref s = result.columns[1].as_float64()
-    assert_equal(s[0], 9.0)  # True: 1+3+5
-    assert_equal(s[1], 6.0)  # False: 2+4
+    ref s = result.columns[1].as_int64()
+    assert_equal(s[0], 9)  # True: 1+3+5
+    assert_equal(s[1], 6)  # False: 2+4
 
 
 # ---------------------------------------------------------------------------
@@ -263,9 +326,9 @@ def test_groupby_multiple_aggs() raises:
     var result = groupby(keys, vals, aggs)
     assert_equal(result.num_columns(), 3)  # key + sum + count
 
-    ref s = result.columns[1].as_float64()
-    assert_equal(s[0], 40.0)  # sum for key=1
-    assert_equal(s[1], 60.0)  # sum for key=2
+    ref s = result.columns[1].as_int64()
+    assert_equal(s[0], 40)  # sum for key=1
+    assert_equal(s[1], 60)  # sum for key=2
 
     ref c = result.columns[2].as_int64()
     assert_equal(c[0], 2)  # count for key=1

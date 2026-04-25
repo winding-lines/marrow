@@ -602,7 +602,17 @@ def resolve_columns(expr: AnyValue, schema: Schema) raises -> AnyValue:
                     + c[].name
                     + "' not found in schema"
                 )
-            return col(idx)
+            return Column(
+                index=idx,
+                name=c[].name.copy(),
+                dtype_=Optional(schema.fields[idx].dtype.copy()),
+            )
+        if not c[].dtype_:
+            return Column(
+                index=c[].index,
+                name=c[].name.copy(),
+                dtype_=Optional(schema.fields[c[].index].dtype.copy()),
+            )
         return expr
 
     if k == LITERAL:

@@ -98,6 +98,12 @@
 
 ### Fixes
 
+- `groupby` `sum`/`min`/`max` now use an `int64` accumulator for integer inputs
+  (`int8`/`int16`/`int32`/`int64`/`uint8`/`uint16`/`uint32`/`uint64`), preserving
+  precision for values above 2^53. Previously, all integer inputs were silently cast
+  to `float64` before accumulation. The output column dtype is now `int64` for
+  integer inputs (was `float64`). `mean` and `count` are unchanged. Fixes #112.
+
 - **`PyUnicode_AsUTF8AndSize` return type** (`python/arrays.mojo`): `PyUnicode_AsUTF8AndSize` now returns `StringSlice[ImmutAnyOrigin]` directly; removed the stale `.value()` unwrap that caused a compile error against newer Mojo stdlib.
 
 - **ASAP destruction UAF in `bench_groupby`** (`marrow/kernels/tests/bench_groupby.mojo`): Added `keep(keys)` / `keep(vals)` after `b.iter[call]()` so the `@parameter` closure's captured arrays stay live for the duration of the benchmark loop. Without them, Mojo's ASAP destruction freed `keys`/`vals` before the iteration completed, corrupting the heap and crashing the subsequent `SwissHashTable` allocation. Re-enables the `bench-mojo` CI job.

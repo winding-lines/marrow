@@ -306,8 +306,14 @@ struct AnyRelation(ImplicitlyCopyable, Movable, Writable):
         for i in range(len(funcs)):
             if funcs[i] == "count":
                 fields.append(Field(funcs[i], AnyDataType(int64)))
-            else:
+            elif funcs[i] == "mean":
                 fields.append(Field(funcs[i], AnyDataType(float64)))
+            else:
+                var maybe_dt = resolved_vals[i].dtype()
+                if maybe_dt and maybe_dt.value().is_integer():
+                    fields.append(Field(funcs[i], AnyDataType(int64)))
+                else:
+                    fields.append(Field(funcs[i], AnyDataType(float64)))
 
         var agg = Aggregate(
             input=self,
