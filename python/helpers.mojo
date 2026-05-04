@@ -19,7 +19,7 @@ from std.python.bindings import PythonTypeBuilder
 
 
 def pymethod[
-    T: AnyType,
+    T: ImplicitlyDestructible,
     R: ConvertibleToPython,
     //,
     method: def(T) raises thin -> R,
@@ -33,7 +33,7 @@ def pymethod[
 
 
 def pymethod[
-    T: AnyType,
+    T: ImplicitlyDestructible,
     A0: ConvertibleFromPython,
     R: ConvertibleToPython,
     //,
@@ -52,7 +52,7 @@ def pymethod[
 
 
 def pymethod[
-    T: AnyType,
+    T: ImplicitlyDestructible,
     A0: ConvertibleFromPython,
     A1: ConvertibleFromPython,
     R: ConvertibleToPython,
@@ -74,7 +74,7 @@ def pymethod[
 
 
 def pymethod[
-    T: AnyType,
+    T: ImplicitlyDestructible,
     A0: ConvertibleFromPython,
     A1: ConvertibleFromPython,
     A2: ConvertibleFromPython,
@@ -100,7 +100,7 @@ def pymethod[
 
 
 def pymethod[
-    T: AnyType,
+    T: ImplicitlyDestructible,
     E: ConvertibleToPython & Copyable,
     //,
     method: def(T) raises thin -> List[E],
@@ -119,7 +119,7 @@ def pymethod[
 
 
 def pymethod[
-    T: AnyType,
+    T: ImplicitlyDestructible,
     A0: ConvertibleFromPython,
     E: ConvertibleToPython & Copyable,
     //,
@@ -143,7 +143,7 @@ def pymethod[
 
 
 def pymethod[
-    T: AnyType,
+    T: ImplicitlyDestructible,
     A0: ConvertibleFromPython,
     A1: ConvertibleFromPython,
     E: ConvertibleToPython & Copyable,
@@ -170,7 +170,7 @@ def pymethod[
 
 
 def pymethod[
-    T: AnyType,
+    T: ImplicitlyDestructible,
     E: ConvertibleFromPython,
     R: ConvertibleToPython,
     //,
@@ -194,7 +194,7 @@ def pymethod[
 
 
 def pymethod[
-    T: AnyType,
+    T: ImplicitlyDestructible,
     A0: ConvertibleFromPython,
     E: ConvertibleFromPython,
     R: ConvertibleToPython,
@@ -260,7 +260,7 @@ def marrow_module(obj: PythonObject) raises -> PythonObject:
 
 
 def def_display[
-    T: Writable
+    T: Writable & ImplicitlyDestructible
 ](mut type_builder: PythonTypeBuilder) -> ref[type_builder] PythonTypeBuilder:
     """Define Python methods that are used to display instances of the type or the type itself.
     """
